@@ -1,0 +1,168 @@
+package platformer
+
+import (
+	"errors"
+	"io"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"strings"
+
+	getter "github.com/hashicorp/go-getter"
+	"github.com/hashicorp/terraform/config/module"
+	"github.com/hashicorp/terraform/terraform"
+)
+
+// Platformer is the platform to be managed by Terraform
+type Platformer struct {
+	Path             string
+	Code             string
+	Providers        map[string]terraform.ResourceProvider
+	Provisioners     map[string]terraform.ResourceProvisioner
+	vars             map[string]interface{}
+	state            *terraform.State
+	plan             *terraform.Plan
+	mod              *module.Tree
+	context          *terraform.Context
+	providerResolver terraform.ResourceProviderResolver
+	provisioners     map[string]terraform.ResourceProvisionerFactory
+}
+
+// New return an instance of Platformer
+func New(path string, code string) (*Platformer, error) {
+	platformer := &Platformer{
+		Path: path,
+		Code: code,
+	}
+	platformer.Providers = defaultProviders()
+	platformer.updateProviders()
+	platformer.Provisioners = defaultProvisioners()
+	platformer.updateProvisioners()
+
+	if _, err := platformer.setModule(); err != nil {
+		return platformer, err
+	}
+
+	return platformer, nil
+}
+
+// Create is to create the platform
+func (p *Platformer) Create() error {
+	return p.Apply(false)
+}
+
+// Destroy is to destroy/terminate an existing platform
+func (p *Platformer) Destroy() error {
+	return p.Apply(true)
+}
+
+// Apply brings the platform to the desired state. It'll destroy the platform
+// when destroy is true.
+func (p *Platformer) Apply(destroy bool) error {
+	if p.context == nil {
+		if _, err := p.Context(destroy); err != nil {
+			return err
+		}
+	}
+
+	if _, err := p.context.Plan(); err != nil {
+		return err
+	}
+
+	if _, err := p.context.Refresh(); err != nil {
+		return err
+	}
+
+	state, err := p.context.Apply()
+	if err != nil {
+		return err
+	}
+	p.state = state
+
+	return nil
+}
+
+// Plan returns execution plan for an existing configuration to apply to the
+// platform. It will create the plan if does not exists.
+// It's required that a context/configuration exists
+func (p *Platformer) Plan() (*terraform.Plan, error) {
+	if p.plan == nil {
+		if p.context == nil {
+			return nil, errors.New("Missing configuration to get the plan")
+		}
+		plan, err := p.context.Plan()
+		if err != nil {
+			return nil, err
+		}
+		p.plan = plan
+	}
+
+	return p.plan, nil
+}
+
+// Context creates the Terraform context or configuration
+func (p *Platformer) Context(destroy bool) (*terraform.Context, error) {
+
+	// Create ContextOpts with the current state and variables to apply
+	ctxOpts := &terraform.ContextOpts{
+		Destroy:          destroy,
+		State:            p.state,
+		Variables:        p.vars,
+		Module:           p.mod,
+		ProviderResolver: p.providerResolver,
+		Provisioners:     p.provisioners,
+	}
+
+	ctx, err := terraform.NewContext(ctxOpts)
+	if err != nil {
+		return nil, err
+	}
+	p.context = ctx
+
+	return p.context, nil
+}
+
+func (p *Platformer) setModule() (*module.Tree, error) {
+	var cfgPath = p.Path
+	// If path is not set, a temporal directory is created to store the
+	// configuration files. It will be deleted when this function ends
+	if len(cfgPath) == 0 {
+		tmpDir, err := ioutil.TempDir("", "platformer")
+		if err != nil {
+			return nil, err
+		}
+		cfgPath = tmpDir
+		defer os.RemoveAll(cfgPath)
+	}
+
+	// Write the configuration file
+	if len(p.Code) > 0 {
+		cfgFileName := filepath.Join(cfgPath, "main.tf")
+		// TODO: Verify there is no other file named `main.tf`. If it's there,
+		// rename it to `main.org.tf` or similar, then defer to rename it as it was
+		cfgFile, err := os.Create(cfgFileName)
+		if err != nil {
+			return nil, err
+		}
+		_, err = io.Copy(cfgFile, strings.NewReader(p.Code))
+		if err != nil {
+			return nil, err
+		}
+		cfgFile.Close()
+		defer os.Remove(cfgFileName)
+	}
+
+	mod, err := module.NewTreeModule("", cfgPath)
+	if err != nil {
+		return nil, err
+	}
+	modStorage := &getter.FolderStorage{
+		StorageDir: filepath.Join(cfgPath, ".tfmodules"),
+	}
+	if err = mod.Load(modStorage, module.GetModeNone); err != nil {
+		return nil, err
+	}
+	p.mod = mod
+
+	return p.mod, nil
+}
