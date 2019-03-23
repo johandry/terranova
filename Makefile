@@ -8,14 +8,14 @@ install: vet golint test
 	@go install .
 
 test:
-	@go list ./... | grep -v -E '^github.com/johandry/platformer/vendor' | xargs -n1 go test -cover
+	@go list ./... | grep -v -E '^github.com/johandry/terranova/vendor' | xargs -n1 go test -cover
 
 vet:
-	@go list ./... | grep -v -E '^github.com/johandry/platformer/vendor' | xargs -n1 go vet -v
+	@go list ./... | grep -v -E '^github.com/johandry/terranova/vendor' | xargs -n1 go vet -v
 
 golint:
 	-@[[ -x $${GOPATH}/bin/golint ]] || go get github.com/golang/lint/golint
-	@go list ./... | grep -v -E '^github.com/johandry/platformer/vendor' | xargs -n1 golint
+	@go list ./... | grep -v -E '^github.com/johandry/terranova/vendor' | xargs -n1 golint
 
 init:
 	-@[[ -x $${GOPATH}/bin/govendor ]] || go get -u github.com/kardianos/govendor

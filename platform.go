@@ -1,4 +1,4 @@
-package platformer
+package terranova
 
 import (
 	"errors"
@@ -13,8 +13,8 @@ import (
 	"github.com/hashicorp/terraform/terraform"
 )
 
-// Platformer is the platform to be managed by Terraform
-type Platformer struct {
+// Platform is the platform to be managed by Terraform
+type Platform struct {
 	Path             string
 	Code             string
 	Providers        map[string]terraform.ResourceProvider
@@ -28,37 +28,37 @@ type Platformer struct {
 	provisioners     map[string]terraform.ResourceProvisionerFactory
 }
 
-// New return an instance of Platformer
-func New(path string, code string) (*Platformer, error) {
-	platformer := &Platformer{
+// New return an instance of Platform
+func New(path string, code string) (*Platform, error) {
+	platform := &Platform{
 		Path: path,
 		Code: code,
 	}
-	platformer.Providers = defaultProviders()
-	platformer.updateProviders()
-	platformer.Provisioners = defaultProvisioners()
-	platformer.updateProvisioners()
+	platform.Providers = defaultProviders()
+	platform.updateProviders()
+	platform.Provisioners = defaultProvisioners()
+	platform.updateProvisioners()
 
-	if _, err := platformer.setModule(); err != nil {
-		return platformer, err
+	if _, err := platform.setModule(); err != nil {
+		return platform, err
 	}
 
-	return platformer, nil
+	return platform, nil
 }
 
 // Create is to create the platform
-func (p *Platformer) Create() error {
+func (p *Platform) Create() error {
 	return p.Apply(false)
 }
 
 // Destroy is to destroy/terminate an existing platform
-func (p *Platformer) Destroy() error {
+func (p *Platform) Destroy() error {
 	return p.Apply(true)
 }
 
 // Apply brings the platform to the desired state. It'll destroy the platform
 // when destroy is true.
-func (p *Platformer) Apply(destroy bool) error {
+func (p *Platform) Apply(destroy bool) error {
 	if p.context == nil {
 		if _, err := p.Context(destroy); err != nil {
 			return err
@@ -85,7 +85,7 @@ func (p *Platformer) Apply(destroy bool) error {
 // Plan returns execution plan for an existing configuration to apply to the
 // platform. It will create the plan if does not exists.
 // It's required that a context/configuration exists
-func (p *Platformer) Plan() (*terraform.Plan, error) {
+func (p *Platform) Plan() (*terraform.Plan, error) {
 	if p.plan == nil {
 		if p.context == nil {
 			return nil, errors.New("Missing configuration to get the plan")
@@ -101,7 +101,7 @@ func (p *Platformer) Plan() (*terraform.Plan, error) {
 }
 
 // Context creates the Terraform context or configuration
-func (p *Platformer) Context(destroy bool) (*terraform.Context, error) {
+func (p *Platform) Context(destroy bool) (*terraform.Context, error) {
 
 	// Create ContextOpts with the current state and variables to apply
 	ctxOpts := &terraform.ContextOpts{
@@ -122,12 +122,12 @@ func (p *Platformer) Context(destroy bool) (*terraform.Context, error) {
 	return p.context, nil
 }
 
-func (p *Platformer) setModule() (*module.Tree, error) {
+func (p *Platform) setModule() (*module.Tree, error) {
 	var cfgPath = p.Path
 	// If path is not set, a temporal directory is created to store the
 	// configuration files. It will be deleted when this function ends
 	if len(cfgPath) == 0 {
-		tmpDir, err := ioutil.TempDir("", "platformer")
+		tmpDir, err := ioutil.TempDir("", "platform")
 		if err != nil {
 			return nil, err
 		}

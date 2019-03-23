@@ -1,4 +1,4 @@
-package platformer
+package terranova
 
 import (
 	"github.com/hashicorp/terraform/command"

@@ -1,4 +1,4 @@
-package platformer
+package terranova
 
 import (
 	"github.com/hashicorp/terraform/builtin/provisioners/file"
@@ -7,7 +7,7 @@ import (
 	"github.com/hashicorp/terraform/terraform"
 )
 
-func (p *Platformer) updateProvisioners() map[string]terraform.ResourceProvisionerFactory {
+func (p *Platform) updateProvisioners() map[string]terraform.ResourceProvisionerFactory {
 	ctxProvisioners := make(map[string]terraform.ResourceProvisionerFactory)
 
 	for name, provisioner := range p.Provisioners {
@@ -20,7 +20,7 @@ func (p *Platformer) updateProvisioners() map[string]terraform.ResourceProvision
 }
 
 // AddProvisioner adds a new provisioner to the provisioner list
-func (p *Platformer) AddProvisioner(name string, provisioner terraform.ResourceProvisioner) *Platformer {
+func (p *Platform) AddProvisioner(name string, provisioner terraform.ResourceProvisioner) *Platform {
 	if p.Provisioners == nil {
 		p.Provisioners = defaultProvisioners()
 	}

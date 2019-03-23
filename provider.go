@@ -1,4 +1,4 @@
-package platformer
+package terranova
 
 import (
 	"github.com/hashicorp/terraform/terraform"
@@ -6,7 +6,7 @@ import (
 	"github.com/terraform-providers/terraform-provider-template/template"
 )
 
-func (p *Platformer) updateProviders() terraform.ResourceProviderResolver {
+func (p *Platform) updateProviders() terraform.ResourceProviderResolver {
 	ctxProviders := make(map[string]terraform.ResourceProviderFactory)
 
 	for name, provider := range p.Providers {
@@ -21,7 +21,7 @@ func (p *Platformer) updateProviders() terraform.ResourceProviderResolver {
 }
 
 // AddProvider adds a new provider to the providers list
-func (p *Platformer) AddProvider(name string, provider terraform.ResourceProvider) *Platformer {
+func (p *Platform) AddProvider(name string, provider terraform.ResourceProvider) *Platform {
 	if p.Providers == nil {
 		p.Providers = defaultProviders()
 	}
