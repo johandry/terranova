@@ -1,36 +1,39 @@
-.PHONY: default test vet golint build init vendor
+SHELL	:= /bin/bash
 
+.PHONY: default 
 default: install
 
-all: vendor install
+.PHONY: all 
+all: install
 
-install: vet golint test
-	@go install .
+.PHONY: install 
+install: fmt test
+	go install .
 
+.PHONY: test
 test:
-	@go list ./... | grep -v -E '^github.com/johandry/terranova/vendor' | xargs -n1 go test -cover
+	go test -v -cover ./...
 
-vet:
-	@go list ./... | grep -v -E '^github.com/johandry/terranova/vendor' | xargs -n1 go vet -v
+.PHONY: fmt
+fmt:
+	go fmt ./...
+	go vet ./...
+	go list ./... | xargs -n1 golint
 
-golint:
-	-@[[ -x $${GOPATH}/bin/golint ]] || go get github.com/golang/lint/golint
-	@go list ./... | grep -v -E '^github.com/johandry/terranova/vendor' | xargs -n1 golint
+# init:
+# 	-@[[ -x $${GOPATH}/bin/govendor ]] || go get -u github.com/kardianos/govendor
+# 	@govendor init
+# 	@$(MAKE) vendor
 
-init:
-	-@[[ -x $${GOPATH}/bin/govendor ]] || go get -u github.com/kardianos/govendor
-	@govendor init
-	@$(MAKE) vendor
+# vendor:
+# 	@govendor list -no-status +missing | xargs -n1 go get -u
+# 	@govendor add +external
 
-vendor:
-	@govendor list -no-status +missing | xargs -n1 go get -u
-	@govendor add +external
+# vendor-update:
+# 	@govendor update +vendor
 
-vendor-update:
-	@govendor update +vendor
+# clean:
+# 	@govendor remove +vendor
 
-clean:
-	@govendor remove +vendor
-
-clean-all: clean
-	@$(RM) -r ./vendor/
+# clean-all: clean
+# 	@$(RM) -r ./vendor/
