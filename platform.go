@@ -78,35 +78,35 @@ func (p *Platform) Var(name string, value interface{}) *Platform {
 }
 
 // WriteState takes a io.Writer as input to write the Terraform state
-func (p *Platform) WriteState(w io.Writer) error {
-	return terraform.WriteState(p.State, w)
+func (p *Platform) WriteState(w io.Writer) (*Platform, error) {
+	return p, terraform.WriteState(p.State, w)
 }
 
 // ReadState takes a io.Reader as input to read from it the Terraform state
-func (p *Platform) ReadState(r io.Reader) error {
+func (p *Platform) ReadState(r io.Reader) (*Platform, error) {
 	state, err := terraform.ReadState(r)
 	if err != nil {
-		return err
+		return p, err
 	}
 	p.State = state
-	return nil
+	return p, nil
 }
 
 // WriteStateToFile save the state of the Terraform state to a file
-func (p *Platform) WriteStateToFile(filename string) error {
+func (p *Platform) WriteStateToFile(filename string) (*Platform, error) {
 	var state bytes.Buffer
-	if err := p.WriteState(&state); err != nil {
-		return err
+	if _, err := p.WriteState(&state); err != nil {
+		return p, err
 	}
-	return ioutil.WriteFile(filename, state.Bytes(), 0644)
+	return p, ioutil.WriteFile(filename, state.Bytes(), 0644)
 }
 
 // ReadStateFromFile will load the Terraform state from a file and assign it to the
 // Platform state.
-func (p *Platform) ReadStateFromFile(filename string) error {
+func (p *Platform) ReadStateFromFile(filename string) (*Platform, error) {
 	file, err := os.Open(filename)
 	if err != nil {
-		return err
+		return p, err
 	}
 	return p.ReadState(file)
 }
