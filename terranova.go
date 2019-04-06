@@ -116,7 +116,7 @@ func (p *Platform) module() (*module.Tree, error) {
 		return nil, err
 	}
 
-	s := module.NewStorage(filepath.Join(cfgPath, "modules"), nil, nil)
+	s := module.NewStorage(filepath.Join(cfgPath, "modules"), nil)
 	s.Mode = module.GetModeNone // or module.GetModeGet?
 
 	if err := mod.Load(s); err != nil {
