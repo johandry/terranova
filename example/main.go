@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"os"
 	"strconv"
 
 	"github.com/hashicorp/terraform/builtin/provisioners/file"
@@ -22,14 +23,14 @@ func main() {
 	flag.Parse()
 
 	if len(keyName) == 0 {
-		log.Fatalf("key name is required. Create or use an existing key name assigned to your AWS account")
+		log.Fatalf("a keypair name is required, use the flag `-. List your available KeyPairs with the AWS CLI command: `aws ec2 describe-key-pairs --query 'KeyPairs[*].KeyName' --output table`.Create a KeyPair with the AWS CLI command: `aws ec2 create-key-pair --key-name MyKeyPair`")
 	}
 
 	if count < 0 {
 		log.Fatalf("count cannot be negative. It has to be '0' to terminate all the creted instances or the desired number of instances")
 	}
 
-	platform := terranova.NewPlatform(code).
+	platform, err := terranova.NewPlatform(code).
 		AddProvider("aws", aws.Provider()).
 		AddProvisioner("file", file.Provisioner()).
 		Var("count", strconv.Itoa(count)).
@@ -37,16 +38,22 @@ func main() {
 		ReadStateFromFile(stateFilename)
 
 	if err != nil {
-		log.Fatalf("Fail to load the initial state of the platform from file %s. %s", stateFilename, err)
+		if os.IsNotExist(err) {
+			log.Printf("[DEBUG] state file %s does not exists", stateFilename)
+		} else {
+			log.Fatalf("Fail to load the initial state of the platform from file %s. %s", stateFilename, err)
+		}
 	}
 
 	if err := platform.Apply((count == 0)); err != nil {
 		log.Fatalf("Fail to apply the changes to the platform. %s", err)
 	}
 
-	if err := platform.WriteStateToFile(stateFilename); err != nil {
+	if _, err := platform.WriteStateToFile(stateFilename); err != nil {
 		log.Fatalf("Fail to save the final state of the platform to file %s. %s", stateFilename, err)
 	}
+
+	log.Printf("Check your EC2 instances with the AWS CLI command: `aws ec2 describe-instances --query 'Reservations[*].Instances[*].[InstanceId, PublicIpAddress, State.Name]' --output table`")
 }
 
 func init() {
