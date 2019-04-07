@@ -2,7 +2,7 @@
 
 Terranova is a Go package that allow you to use the Terraform Go Packages instead of using the binary.
 
-For more information about Terranova, refer to this [blog post]() 
+For more information about Terranova, refer to this [blog post](http://blog.johandry.com/post/terranova-terraform-from-go/)
 
 ## Compatibility
 
@@ -24,7 +24,7 @@ The high level flow is like follows:
 6. Apply the changes
 7. Save the final state of the infrastructure
 
-Read the example located in [example/main.go](example/main.go) and the [blog post]()
+Read the example located in [example/main.go](example/main.go) and the [blog post](http://blog.johandry.com/post/terranova-terraform-from-go/)
 
 ## Examples
 
