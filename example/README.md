@@ -1,6 +1,6 @@
 # Terranova Example
 
-This example is to create, scale or terminate AWS EC2 instances using the Terranova package. The code is explained in the [blog post](http://blog.johandry.com/post/terranova-terraform-from-go/).
+This example is to create, scale or terminate AWS EC2 instances using the Terranova package. The code is explained in the blog post [Terranova: Using Terraform from Go](http://blog.johandry.com/post/terranova-terraform-from-go/).
 
 To Build the example execute:
 
@@ -52,4 +52,4 @@ aws opsworks delete-instance --region us-west-2 --instance-id 3a21cfac-4a1f-4ce2
 
 Identify the instance ID with the AWS CLI command previously used to verify results.
 
-It's safe to delete the file `aws-ec2-ubuntu.tfstate` when the EC2 instances were terminated.
+It's safe to delete the file `aws-ec2-ubuntu.tfstate` when the EC2 instances are terminated.
