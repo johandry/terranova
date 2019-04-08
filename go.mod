@@ -1,10 +1,5 @@
 module github.com/johandry/terranova
 
-replace (
-	gopkg.in/check.v1 => github.com/go-check/check v0.0.0-20180628173108-788fd7840127
-	gopkg.in/yaml.v2 => github.com/go-yaml/yaml v0.0.0-20180328195020-5420a8b6744d
-)
-
 require (
 	github.com/apparentlymart/go-cidr v1.0.0 // indirect
 	github.com/armon/go-radix v1.0.0 // indirect
