@@ -123,6 +123,10 @@ func (p *Platform) module() (*module.Tree, error) {
 		return nil, fmt.Errorf("failed to load the modules. %s", err)
 	}
 
+	if err := mod.Validate().Err(); err != nil {
+		return nil, fmt.Errorf("failed Terraform code validation. %s", err)
+	}
+
 	return mod, nil
 }
 
