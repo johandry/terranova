@@ -40,25 +40,22 @@ package main
 import (
   "log"
   "os"
-  "strconv"
 
-  "github.com/hashicorp/terraform/builtin/provisioners/file"
   "github.com/johandry/terranova"
   "github.com/terraform-providers/terraform-provider-aws/aws"
 )
 
 var code string
 
-const stateFilename = "aws-ec2-ubuntu.tfstate"
+const stateFilename = "simple.tfstate"
 
 func main() {
   count := 1
-  keyName := "username"
+  keyName := "demo"
 
   platform, err := terranova.NewPlatform(code).
     AddProvider("aws", aws.Provider()).
-    AddProvisioner("file", file.Provisioner()).
-    Var("count", strconv.Itoa(count)).
+    Var("count", count).
     Var("key_name", keyName).
     ReadStateFromFile(stateFilename)
 
@@ -93,18 +90,13 @@ func init() {
     count         = "${var.count}"
     key_name      = "${var.key_name}"
   }
-  provisioner "file" {
-    content     = "ami used: ${self.ami}"
-    destination = "/tmp/file.log"
-  }
 `
 }
-
 ```
 
-Read the same example with some improvements in [terranova-examples/aws/ec2/main.go](https://github.com/johandry/terranova-examples/blob/master/aws/ec2/main.go) and the blog post [Terranova: Using Terraform from Go](http://blog.johandry.com/post/terranova-terraform-from-go/) for a detail explanation of the code.
+Read the same example at [terranova-examples/aws/simple/main.go](https://github.com/johandry/terranova-examples/blob/master/aws/simple/main.go) and the blog post [Terranova: Using Terraform from Go](http://blog.johandry.com/post/terranova-terraform-from-go/) for a detail explanation of the code.
 
-The git repository https://github.com/johandry/terranova-examples contain more examples of how to Terranova with different clouds or providers.
+The git repository [terranova-examples](https://github.com/johandry/terranova-examples) contain more examples of how to use Terranova with different clouds or providers.
 
 ## Sources
 
@@ -119,5 +111,6 @@ Please, feel free to comment or open Pull Requests, help us to improve Terranova
 - [ ] Implement Terraform Hooks
 - [ ] Implement Logs
 - [ ] Implement Stats
+- [ ] Implement Code Validation
 - [ ] Release Go module version `0.1.0`
 - [ ] Implement Output interface
