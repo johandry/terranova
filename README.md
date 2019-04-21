@@ -6,13 +6,7 @@ For more information about Terranova and how to use use it, refer to the blog po
 
 ## How to use the Terranova package
 
-Get the package (optional if you are using modules):
-
-```bash
-go get -u github.com/johandry/terranova
-```
-
-And import it in the Go code.
+Terranova works better as a Go module, if you don't have a `go.mod` file in your project, create it with `go mod init [package full name]`. Import Terranova in the Go code:
 
 ```go
 import (
@@ -20,9 +14,18 @@ import (
 )
 ```
 
-As soon as you execute a Go command such as `go build` or `go test` it will be included in your `go.mod` file, if you are using modules.
+As soon as you execute a Go command such as `go build` or `go test` it will be included in your `go.mod` file and downloaded.
 
-The high level use of Terranova is like follows:
+If you are not using modules yet, using vendors or having the packages in `$GOPATH`, please, `git clone` the repository and create the vendor directory:
+
+```bash
+mkdir -p $GOPATH/src/github.com/johandry/
+cd $GOPATH/src/github.com/johandry/
+git clone --depth=1 https://github.com/johandry/terranova.git
+GO111MODULE=on go mod vendor
+```
+
+After having the package, the high level use of Terranova is like follows:
 
 1. Create a *Platform* instance with the Terraform *code* to apply
 2. Get (`go get`), import and add (`AddProvider()`) the Terraform *Provider(s)* used in the code
