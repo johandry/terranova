@@ -11,7 +11,6 @@ assignees: johandry
 A great way to contribute to the project is to send a detailed report when you
 encounter an issue. We always appreciate a well-written, thorough bug report,
 and will thank you for it!
-
 The GitHub issue tracker is for bug reports and feature requests. General support can be found at Slack - gophers.slack.com #terraform channel or message me directly @johandry
 -->
 
@@ -29,7 +28,7 @@ resolving the issue, please leave a comment.
 A clear and concise description of what the bug is.
 
 **To Reproduce**
-Steps to reproduce the behavior:
+Steps to reproduce the behavior. Example:
 1. Get the modules '...'
 2. Use terraformer package '....'
 3. With this Terraform code '....'
@@ -40,7 +39,7 @@ A clear and concise description of what you expected to happen.
 
 **Screenshots or logs**
 If applicable, add screenshots to help explain your problem.
-When sending lengthy log-files, consider posting them as a gist (https://gist.github.com). 
+For lengthy log-files, consider posting them as a gist (https://gist.github.com) or use services line Dropbox and share a link to the Zip file. 
 Don't forget to remove sensitive data from your logfiles before posting. You can replace those parts with "REDACTED".
 
 **Platforms**
@@ -57,5 +56,10 @@ AWS:
  - OS: [e.g. macOS]
  - Version: [e.g. 10.14.6]
 
-**Additional context**
+**Additional context:**
 Add any other context about the problem here.
+
+**References:**
+List any other GitHub issues (open or closed) or Pull Requests that should be linked to this bug. For example:
+
+- #6017
