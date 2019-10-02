@@ -22,6 +22,9 @@ import (
 	"io/ioutil"
 	"os"
 
+	"github.com/hashicorp/terraform/providers"
+	"github.com/hashicorp/terraform/states"
+	"github.com/hashicorp/terraform/states/statefile"
 	"github.com/hashicorp/terraform/terraform"
 	"github.com/terraform-providers/terraform-provider-null/null"
 )
@@ -29,14 +32,14 @@ import (
 // Platform is the platform to be managed by Terraform
 type Platform struct {
 	Code         string
-	Providers    map[string]terraform.ResourceProvider
-	Provisioners map[string]terraform.ResourceProvisioner
+	Providers    map[string]providers.Factory
+	Provisioners map[string]terraform.ProvisionerFactory
 	Vars         map[string]interface{}
 	State        *State
 }
 
 // State is an alias for terraform.State
-type State = terraform.State
+type State = states.State
 
 // NewPlatform return an instance of Platform with default values
 func NewPlatform(code string) *Platform {
@@ -46,14 +49,14 @@ func NewPlatform(code string) *Platform {
 	platform.Providers = defaultProviders()
 	platform.Provisioners = defaultProvisioners()
 
-	platform.State = terraform.NewState()
+	platform.State = states.NewState()
 
 	return platform
 }
 
-func defaultProviders() map[string]terraform.ResourceProvider {
-	return map[string]terraform.ResourceProvider{
-		"null": null.Provider(),
+func defaultProviders() map[string]providers.Factory {
+	return map[string]providers.Factory{
+		"null": providers.FactoryFixed(null.Provider()),
 	}
 }
 
@@ -63,12 +66,12 @@ func (p *Platform) AddProvider(name string, provider terraform.ResourceProvider)
 	return p
 }
 
-func defaultProvisioners() map[string]terraform.ResourceProvisioner {
-	return map[string]terraform.ResourceProvisioner{}
+func defaultProvisioners() map[string]terraform.ProvisionerFactory {
+	return map[string]terraform.ProvisionerFactory{}
 }
 
 // AddProvisioner adds a new provisioner to the provisioner list
-func (p *Platform) AddProvisioner(name string, provisioner terraform.ResourceProvisioner) *Platform {
+func (p *Platform) AddProvisioner(name string, provisioner terraform.ProvisionerFactory) *Platform {
 	p.Provisioners[name] = provisioner
 	return p
 }
@@ -95,16 +98,17 @@ func (p *Platform) Var(name string, value interface{}) *Platform {
 
 // WriteState takes a io.Writer as input to write the Terraform state
 func (p *Platform) WriteState(w io.Writer) (*Platform, error) {
-	return p, terraform.WriteState(p.State, w)
+	sf := statefile.New(p.State, "", 0)
+	return p, statefile.Write(sf, w)
 }
 
 // ReadState takes a io.Reader as input to read from it the Terraform state
 func (p *Platform) ReadState(r io.Reader) (*Platform, error) {
-	state, err := terraform.ReadState(r)
+	sf, err := statefile.Read(r)
 	if err != nil {
 		return p, err
 	}
-	p.State = state
+	p.State = sf.State
 	return p, nil
 }
 
@@ -121,6 +125,7 @@ func (p *Platform) WriteStateToFile(filename string) (*Platform, error) {
 // Platform state.
 func (p *Platform) ReadStateFromFile(filename string) (*Platform, error) {
 	file, err := os.Open(filename)
+	defer file.Close()
 	if err != nil {
 		return p, err
 	}
