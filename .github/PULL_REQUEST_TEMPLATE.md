@@ -1,7 +1,7 @@
 ---
 name: Pull request
 about: Help us improve our package
-title: "[WIP][Feature|Fix]"
+title: "[WIP|Feature|Fix]"
 labels: do-not-merge
 assignees: johandry
 
@@ -27,7 +27,8 @@ don't get discouraged!
 * Please vote on this pull request by adding a 👍 [reaction](https://blog.github.com/2016-03-10-add-reactions-to-pull-requests-issues-and-comments/) to the original issue to help the community and maintainers prioritize this request
 * Ensure you have added or ran the appropriate tests for this pull request
 * If the PR is unfinished, add `[WIP]` prefix to the pull request title and add the `do-not-merge` label.
-* Include in the title the category of this pull request. The categories are: `[Feature]` and `[Fix]`. The category is optional if the title prefix is `[WIP]`, once the PR is ready to be merged include the right category and remove `[WIP]`.
+* Include in the title the category of this pull request. The categories are: `[WIP]`, `[Feature]` or `[Fix]`. If the category is unknown use `[WIP]`, once the PR is ready to be merged replace `[WIP]` for the right category.
+* Always assign label(s) to your PR.
 
 **What this PR does / Why we need it:**
 
