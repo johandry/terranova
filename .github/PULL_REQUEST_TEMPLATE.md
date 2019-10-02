@@ -33,7 +33,8 @@ don't get discouraged!
 **What this PR does / Why we need it:**
 
 **References:**
-List of issues this PR fixes using the format `Fixes #<issue number>` or `Fixes <link of issue>`. The issues will be closed automatically when this pull request is merged. Example:
+List of issues this PR fixes using the prefix `Fixes`, `Closes` or `Resolves` and the issue number or link. Format Examples: `Fixes #<issue number>`, `Closes <link of issue>` or `Resolves #<issue number>`.
+The issues will be closed automatically when this pull request is merged. Example:
  - Fixes #000
 
 **How I did it:**
