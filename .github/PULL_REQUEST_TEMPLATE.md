@@ -11,23 +11,26 @@ quickly. If your pull request is not accepted on the first try,
 don't get discouraged!
 
 ** Make sure all your commits include a signature generated with `git commit -s` **
-
-If this is a bug fix, make sure your description includes "fixes #xxxx", or
-"closes #xxxx"
-
-Please provide the following information:
 -->
 
-**- What I did**
+**Community Note**
 
-**- How I did it**
+* Please vote on this pull request by adding a 👍 [reaction](https://blog.github.com/2016-03-10-add-reactions-to-pull-requests-issues-and-comments/) to the original issue to help the community and maintainers prioritize this request
+* Ensure you have added or ran the appropriate tests for this pull request
+* If the PR is unfinished, add `[WIP]` prefix to the pull request title and add the `do-not-merge` label.
+* Include in the title the category of this pull request. The categories are: `[Feature]` and `[Fix]`. The category is optional if the title prefix is `[WIP]`, once the PR is ready to be merged include the right category and remove `[WIP]`.
 
-**- How to verify it**
+**What this PR does / Why we need it:**
 
-**- Description for the changelog**
-<!--
-Write a short (one line) summary that describes the changes in this
-pull request for inclusion in the changelog:
--->
+**References:**
+List of issues this PR fixes using the format `Fixes #<issue number>` or `Fixes <link of issue>`. The issues will be closed automatically when this pull request is merged. Example:
+ - Fixes #000
 
-**- A funny meme (not mandatory but encouraged)**
+**How I did it:**
+Description of the changes done.
+
+**How to verify it:**
+Instructions to test the change. Include screenshot or test output as evidence or as example of expected results for the tests.
+
+**Description for the changelog:**
+Write a short (one line) summary that describes the changes in this pull request for inclusion in the changelog
