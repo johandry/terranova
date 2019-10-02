@@ -1,3 +1,12 @@
+---
+name: Pull request
+about: Help us improve our package
+title: "[WIP][Feature|Fix]"
+labels: do-not-merge
+assignees: johandry
+
+---
+
 <!--
 Pull requests are always welcome
 
