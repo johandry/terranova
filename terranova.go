@@ -184,7 +184,7 @@ func (p *Platform) variables(v map[string]*configs.Variable) (terraform.InputVal
 		}
 
 		val := &terraform.InputValue{
-			Value:      cty.StringVal(fmt.Sprint("%v", value)),
+			Value:      cty.StringVal(fmt.Sprintf("%v", value)),
 			SourceType: terraform.ValueFromCaller,
 		}
 
