@@ -46,28 +46,32 @@ func NewPlatform(code string) *Platform {
 	platform := &Platform{
 		Code: code,
 	}
-	platform.Providers = defaultProviders()
-	platform.Provisioners = defaultProvisioners()
+	platform.addDefaultProviders()
+	platform.addDefaultProvisioners()
 
 	platform.State = states.NewState()
 
 	return platform
 }
 
-func defaultProviders() map[string]providers.Factory {
-	return map[string]providers.Factory{
-		"null": providers.FactoryFixed(null.Provider()),
-	}
+func (p *Platform) addDefaultProviders() {
+	p.Providers = map[string]providers.Factory{}
+	p.AddProvider("null", null.Provider())
 }
 
 // AddProvider adds a new provider to the providers list
 func (p *Platform) AddProvider(name string, provider terraform.ResourceProvider) *Platform {
-	p.Providers[name] = provider
+	p.Providers[name] = providersFactory(provider)
 	return p
 }
 
-func defaultProvisioners() map[string]terraform.ProvisionerFactory {
-	return map[string]terraform.ProvisionerFactory{}
+func providersFactory(rp terraform.ResourceProvider) providers.Factory {
+	p := NewProvider(rp)
+	return providers.FactoryFixed(p)
+}
+
+func (p *Platform) addDefaultProvisioners() {
+	p.Provisioners = map[string]terraform.ProvisionerFactory{}
 }
 
 // AddProvisioner adds a new provisioner to the provisioner list
