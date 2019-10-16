@@ -24,8 +24,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/hashicorp/terraform/config/module"
+	"github.com/hashicorp/terraform/configs"
+	"github.com/hashicorp/terraform/configs/configload"
+	"github.com/hashicorp/terraform/plans"
+	"github.com/hashicorp/terraform/providers"
 	"github.com/hashicorp/terraform/terraform"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // Apply brings the platform to the desired state. It'll destroy the platform
@@ -38,35 +42,39 @@ func (p *Platform) Apply(destroy bool) error {
 
 	// state := ctx.State()
 
-	if _, err := ctx.Refresh(); err != nil {
-		return err
+	if _, diag := ctx.Refresh(); diag.HasErrors() {
+		return diag.Err()
 	}
 
-	if _, err := ctx.Plan(); err != nil {
-		return err
+	if _, diag := ctx.Plan(); diag.HasErrors() {
+		return diag.Err()
 	}
 
-	_, err = ctx.Apply()
-	p.State = ctx.State()
+	sts, diag := ctx.Apply()
+	p.State = sts
+	// p.State = ctx.State()
 
-	return err
+	if diag.HasErrors() {
+		return diag.Err()
+	}
+	return nil
 }
 
 // Plan returns execution plan for an existing configuration to apply to the
 // platform.
-func (p *Platform) Plan(destroy bool) (*terraform.Plan, error) {
+func (p *Platform) Plan(destroy bool) (*plans.Plan, error) {
 	ctx, err := p.newContext(destroy)
 	if err != nil {
 		return nil, err
 	}
 
-	if _, err := ctx.Refresh(); err != nil {
-		return nil, err
+	if _, diag := ctx.Refresh(); diag.HasErrors() {
+		return nil, diag.Err()
 	}
 
-	plan, err := ctx.Plan()
-	if err != nil {
-		return nil, err
+	plan, diag := ctx.Plan()
+	if diag.HasErrors() {
+		return nil, diag.Err()
 	}
 
 	return plan, nil
@@ -74,35 +82,43 @@ func (p *Platform) Plan(destroy bool) (*terraform.Plan, error) {
 
 // newContext creates the Terraform context or configuration
 func (p *Platform) newContext(destroy bool) (*terraform.Context, error) {
-	module, err := p.module()
+	cfg, err := p.config()
 	if err != nil {
 		return nil, err
 	}
 
-	providerResolver := p.getProviderResolver()
-	provisioners := p.getProvisioners()
+	vars, err := p.variables(cfg.Module.Variables)
+	if err != nil {
+		return nil, err
+	}
+
+	// providerResolver := providers.ResolverFixed(p.Providers)
+	// provisioners := p.Provisioners
 
 	// Create ContextOpts with the current state and variables to apply
-	ctxOpts := &terraform.ContextOpts{
+	ctxOpts := terraform.ContextOpts{
+		Config:           cfg,
 		Destroy:          destroy,
 		State:            p.State,
-		Variables:        p.Vars,
-		Module:           module,
-		ProviderResolver: providerResolver,
-		Provisioners:     provisioners,
+		Variables:        vars,
+		ProviderResolver: providers.ResolverFixed(p.Providers),
+		Provisioners:     p.Provisioners,
 	}
 
-	ctx, err := terraform.NewContext(ctxOpts)
-	if err != nil {
-		return nil, err
+	ctx, diags := terraform.NewContext(&ctxOpts)
+	if diags.HasErrors() {
+		return nil, diags.Err()
 	}
 
-	// TODO: Validate the context
+	// Validate the context
+	if diags = ctx.Validate(); diags.HasErrors() {
+		return nil, diags.Err()
+	}
 
 	return ctx, nil
 }
 
-func (p *Platform) module() (*module.Tree, error) {
+func (p *Platform) config() (*configs.Config, error) {
 	if len(p.Code) == 0 {
 		return nil, fmt.Errorf("no code to apply")
 	}
@@ -127,47 +143,69 @@ func (p *Platform) module() (*module.Tree, error) {
 		return nil, err
 	}
 
-	mod, err := module.NewTreeModule("", cfgPath)
+	loader, err := configload.NewLoader(&configload.Config{
+		ModulesDir: filepath.Join(cfgPath, "modules"),
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	s := module.NewStorage(filepath.Join(cfgPath, "modules"), nil)
-	s.Mode = module.GetModeNone // or module.GetModeGet?
-
-	if err := mod.Load(s); err != nil {
-		return nil, fmt.Errorf("failed to load the modules. %s", err)
+	config, diags := loader.LoadConfig(cfgPath)
+	if diags.HasErrors() {
+		return nil, fmt.Errorf("failed to load the configuration. %s", diags.Error())
 	}
 
-	if err := mod.Validate().Err(); err != nil {
-		return nil, fmt.Errorf("failed Terraform code validation. %s", err)
-	}
+	return config, nil
 
-	return mod, nil
+	// mod, err := module.NewTreeModule("", cfgPath)
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	// s := module.NewStorage(filepath.Join(cfgPath, "modules"), nil)
+	// s.Mode = module.GetModeNone // or module.GetModeGet?
+
+	// if err := mod.Load(s); err != nil {
+	// 	return nil, fmt.Errorf("failed to load the modules. %s", err)
+	// }
+
+	// if err := mod.Validate().Err(); err != nil {
+	// 	return nil, fmt.Errorf("failed Terraform code validation. %s", err)
+	// }
+
+	// return mod, nil
 }
 
-func (p *Platform) getProviderResolver() terraform.ResourceProviderResolver {
-	ctxProviders := make(map[string]terraform.ResourceProviderFactory)
-
-	for name, provider := range p.Providers {
-		ctxProviders[name] = terraform.ResourceProviderFactoryFixed(provider)
-	}
-
-	providerResolver := terraform.ResourceProviderResolverFixed(ctxProviders)
-
-	// TODO: Reset the providers?
-
-	return providerResolver
-}
-
-func (p *Platform) getProvisioners() map[string]terraform.ResourceProvisionerFactory {
-	provisioners := make(map[string]terraform.ResourceProvisionerFactory)
-
-	for name, provisioner := range p.Provisioners {
-		provisioners[name] = func() (terraform.ResourceProvisioner, error) {
-			return provisioner, nil
+func (p *Platform) variables(v map[string]*configs.Variable) (terraform.InputValues, error) {
+	iv := make(terraform.InputValues)
+	for name, value := range p.Vars {
+		if _, declared := v[name]; !declared {
+			return iv, fmt.Errorf("variable %q is not declared in the code", name)
 		}
+
+		val := &terraform.InputValue{
+			Value:      cty.StringVal(fmt.Sprintf("%v", value)),
+			SourceType: terraform.ValueFromCaller,
+		}
+
+		iv[name] = val
 	}
 
-	return provisioners
+	return iv, nil
 }
+
+// func (p *Platform) getProviderResolver() providers.Resolver {
+// 	return providers.ResolverFixed(p.Providers)
+// }
+
+// func (p *Platform) getProvisioners() map[string]terraform.ResourceProvisionerFactory {
+// 	provisioners := make(map[string]terraform.ResourceProvisionerFactory)
+
+// 	for name, provisioner := range p.Provisioners {
+// 		provisioners[name] = func() (terraform.ResourceProvisioner, error) {
+// 			return provisioner, nil
+// 		}
+// 	}
+
+// 	return provisioners
+// }

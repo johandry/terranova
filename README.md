@@ -1,6 +1,6 @@
 # Terranova
 
-Terranova is a Go package that allow you to use the Terraform Go Packages instead of using the binary. It works with the Terraform version `0.11.9`.
+Terranova is a Go package that allow you to use the Terraform Go Packages instead of using the binary. It works with the Terraform version `0.12.9`.
 
 For more information about Terranova and how to use use it, refer to the blog post [Terranova: Using Terraform from Go](http://blog.johandry.com/post/terranova-terraform-from-go/)
 
@@ -58,7 +58,7 @@ func main() {
 
   platform, err := terranova.NewPlatform(code).
     AddProvider("aws", aws.Provider()).
-    Var("count", count).
+    Var("c", count).
     Var("key_name", keyName).
     ReadStateFromFile(stateFilename)
 
@@ -82,7 +82,7 @@ func main() {
 
 func init() {
   code = `
-  variable "count"    { default = 2 }
+  variable "c"    { default = 2 }
   variable "key_name" {}
   provider "aws" {
     region        = "us-west-2"
@@ -90,7 +90,7 @@ func init() {
   resource "aws_instance" "server" {
     instance_type = "t2.micro"
     ami           = "ami-6e1a0117"
-    count         = "${var.count}"
+    count         = "${var.c}"
     key_name      = "${var.key_name}"
   }
 `
@@ -105,15 +105,4 @@ The git repository [terranova-examples](https://github.com/johandry/terranova-ex
 
 All this research was done reading the [Terraform documentation](https://godoc.org/github.com/hashicorp/terraform) and [source code](https://github.com/hashicorp/terraform).
 
-Please, feel free to comment or open Pull Requests, help us to improve Terranova.
-
-## TODO
-
-- [ ] Create testing files
-- [ ] Create CI/CD pipeline
-- [ ] Implement Terraform Hooks
-- [ ] Implement Logs
-- [ ] Implement Stats
-- [ ] Implement Code Validation
-- [ ] Release Go module version `0.1.0`
-- [ ] Implement Output interface
+Please, feel free to comment, open Issues and Pull Requests, help us to improve Terranova.
