@@ -377,13 +377,94 @@ func (p *Provider) ApplyResourceChange(req providers.ApplyResourceChangeRequest)
 // ImportResourceState implements the ImportResourceState from providers.Interface.
 // Requests that the given resource be imported.
 func (p *Provider) ImportResourceState(req providers.ImportResourceStateRequest) (resp providers.ImportResourceStateResponse) {
-	return providers.ImportResourceStateResponse{}
+	info := &terraform.InstanceInfo{
+		Type: req.TypeName,
+	}
+
+	newInstanceStates, err := p.provider.ImportState(info, req.ID)
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+
+	for _, is := range newInstanceStates {
+		// copy the ID again just to be sure it wasn't missed
+		is.Attributes["id"] = is.ID
+
+		resourceType := is.Ephemeral.Type
+		if resourceType == "" {
+			resourceType = req.TypeName
+		}
+
+		schemaBlock := p.getResourceSchemaBlock(resourceType)
+		newStateVal, err := hcl2shim.HCL2ValueFromFlatmap(is.Attributes, schemaBlock.ImpliedType())
+		if err != nil {
+			resp.Diagnostics = resp.Diagnostics.Append(err)
+			return resp
+		}
+
+		// Normalize the value and fill in any missing blocks.
+		newStateVal = objchange.NormalizeObjectFromLegacySDK(newStateVal, schemaBlock)
+
+		meta, err := json.Marshal(is.Meta)
+		if err != nil {
+			resp.Diagnostics = resp.Diagnostics.Append(err)
+			return resp
+		}
+
+		resource := providers.ImportedResource{
+			TypeName: resourceType,
+			Private:  meta,
+			State:    newStateVal,
+		}
+
+		resp.ImportedResources = append(resp.ImportedResources, resource)
+	}
+
+	return resp
 }
 
 // ReadDataSource implements the ReadDataSource from providers.Interface.
 // Returns the data source's current state.
 func (p *Provider) ReadDataSource(req providers.ReadDataSourceRequest) (resp providers.ReadDataSourceResponse) {
-	return providers.ReadDataSourceResponse{}
+	// Ensure there are no nulls that will cause helper/schema to panic.
+	if err := validateConfigNulls(req.Config, nil); err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+
+	schemaBlock := p.getDatasourceSchemaBlock(req.TypeName)
+	config := terraform.NewResourceConfigShimmed(req.Config, schemaBlock)
+
+	info := &terraform.InstanceInfo{
+		Type: req.TypeName,
+	}
+
+	// we need to still build the diff separately with the Read method to match
+	// the old behavior
+	diff, err := p.provider.ReadDataDiff(info, config)
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+
+	// now we can get the new complete data source
+	newInstanceState, err := p.provider.ReadDataApply(info, diff)
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+
+	newStateVal, err := schema.StateValueFromInstanceState(newInstanceState, schemaBlock.ImpliedType())
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+	newStateVal = copyTimeoutValues(newStateVal, req.Config)
+
+	resp.State = newStateVal
+
+	return resp
 }
 
 // Close implements the Close from providers.Interface. It's to shuts down the
