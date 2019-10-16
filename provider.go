@@ -309,7 +309,55 @@ func (p *Provider) Stop() error {
 // ReadResource implements the ReadResource from providers.Interface. Refreshes
 // a resource and returns its current state.
 func (p *Provider) ReadResource(req providers.ReadResourceRequest) (resp providers.ReadResourceResponse) {
-	return providers.ReadResourceResponse{}
+	res := p.provider.ResourcesMap[req.TypeName]
+	schemaBlock := p.getResourceSchemaBlock(req.TypeName)
+
+	stateVal := req.PriorState
+
+	instanceState, err := res.ShimInstanceStateFromValue(stateVal)
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+
+	resp.Private = req.Private
+	private := make(map[string]interface{})
+	if len(req.Private) > 0 {
+		if err := json.Unmarshal(req.Private, &private); err != nil {
+			resp.Diagnostics = resp.Diagnostics.Append(err)
+			return resp
+		}
+	}
+	instanceState.Meta = private
+
+	newInstanceState, err := res.RefreshWithoutUpgrade(instanceState, p.provider.Meta())
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+
+	if newInstanceState == nil || newInstanceState.ID == "" {
+		newStateVal := cty.NullVal(schemaBlock.ImpliedType())
+		resp.NewState = newStateVal
+
+		return resp
+	}
+
+	// helper/schema should always copy the ID over, but do it again just to be safe
+	newInstanceState.Attributes["id"] = newInstanceState.ID
+
+	newStateVal, err := hcl2shim.HCL2ValueFromFlatmap(newInstanceState.Attributes, schemaBlock.ImpliedType())
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+
+	newStateVal = normalizeNullValues(newStateVal, stateVal, false)
+	newStateVal = copyTimeoutValues(newStateVal, stateVal)
+
+	resp.NewState = newStateVal
+
+	return resp
 }
 
 // PlanResourceChange implements the PlanResourceChange from providers.Interface.
@@ -338,8 +386,8 @@ func (p *Provider) ReadDataSource(req providers.ReadDataSourceRequest) (resp pro
 	return providers.ReadDataSourceResponse{}
 }
 
-// Close implements the Close from providers.Interface. Shuts down the plugin
-// process if applicable.
+// Close implements the Close from providers.Interface. It's to shuts down the
+// plugin process but this is not a plugin, so nothing is done here
 func (p *Provider) Close() error {
 	return nil
 }
@@ -620,4 +668,209 @@ func (p *Provider) removeAttributes(v interface{}, ty cty.Type) {
 			p.removeAttributes(attrV, attrTy)
 		}
 	}
+}
+
+// Zero values and empty containers may be interchanged by the apply process.
+// When there is a discrepency between src and dst value being null or empty,
+// prefer the src value. This takes a little more liberty with set types, since
+// we can't correlate modified set values. In the case of sets, if the src set
+// was wholly known we assume the value was correctly applied and copy that
+// entirely to the new value.
+// While apply prefers the src value, during plan we prefer dst whenever there
+// is an unknown or a set is involved, since the plan can alter the value
+// however it sees fit. This however means that a CustomizeDiffFunction may not
+// be able to change a null to an empty value or vice versa, but that should be
+// very uncommon nor was it reliable before 0.12 either.
+func normalizeNullValues(dst, src cty.Value, apply bool) cty.Value {
+	ty := dst.Type()
+	if !src.IsNull() && !src.IsKnown() {
+		// Return src during plan to retain unknown interpolated placeholders,
+		// which could be lost if we're only updating a resource. If this is a
+		// read scenario, then there shouldn't be any unknowns at all.
+		if dst.IsNull() && !apply {
+			return src
+		}
+		return dst
+	}
+
+	// Handle null/empty changes for collections during apply.
+	// A change between null and empty values prefers src to make sure the state
+	// is consistent between plan and apply.
+	if ty.IsCollectionType() && apply {
+		dstEmpty := !dst.IsNull() && dst.IsKnown() && dst.LengthInt() == 0
+		srcEmpty := !src.IsNull() && src.IsKnown() && src.LengthInt() == 0
+
+		if (src.IsNull() && dstEmpty) || (srcEmpty && dst.IsNull()) {
+			return src
+		}
+	}
+
+	// check the invariants that we need below, to ensure we are working with
+	// non-null and known values.
+	if src.IsNull() || !src.IsKnown() || !dst.IsKnown() {
+		return dst
+	}
+
+	switch {
+	case ty.IsMapType(), ty.IsObjectType():
+		var dstMap map[string]cty.Value
+		if !dst.IsNull() {
+			dstMap = dst.AsValueMap()
+		}
+		if dstMap == nil {
+			dstMap = map[string]cty.Value{}
+		}
+
+		srcMap := src.AsValueMap()
+		for key, v := range srcMap {
+			dstVal, ok := dstMap[key]
+			if !ok && apply && ty.IsMapType() {
+				// don't transfer old map values to dst during apply
+				continue
+			}
+
+			if dstVal == cty.NilVal {
+				if !apply && ty.IsMapType() {
+					// let plan shape this map however it wants
+					continue
+				}
+				dstVal = cty.NullVal(v.Type())
+			}
+
+			dstMap[key] = normalizeNullValues(dstVal, v, apply)
+		}
+
+		// you can't call MapVal/ObjectVal with empty maps, but nothing was
+		// copied in anyway. If the dst is nil, and the src is known, assume the
+		// src is correct.
+		if len(dstMap) == 0 {
+			if dst.IsNull() && src.IsWhollyKnown() && apply {
+				return src
+			}
+			return dst
+		}
+
+		if ty.IsMapType() {
+			// helper/schema will populate an optional+computed map with
+			// unknowns which we have to fixup here.
+			// It would be preferable to simply prevent any known value from
+			// becoming unknown, but concessions have to be made to retain the
+			// broken legacy behavior when possible.
+			for k, srcVal := range srcMap {
+				if !srcVal.IsNull() && srcVal.IsKnown() {
+					dstVal, ok := dstMap[k]
+					if !ok {
+						continue
+					}
+
+					if !dstVal.IsNull() && !dstVal.IsKnown() {
+						dstMap[k] = srcVal
+					}
+				}
+			}
+
+			return cty.MapVal(dstMap)
+		}
+
+		return cty.ObjectVal(dstMap)
+
+	case ty.IsSetType():
+		// If the original was wholly known, then we expect that is what the
+		// provider applied. The apply process loses too much information to
+		// reliably re-create the set.
+		if src.IsWhollyKnown() && apply {
+			return src
+		}
+
+	case ty.IsListType(), ty.IsTupleType():
+		// If the dst is null, and the src is known, then we lost an empty value
+		// so take the original.
+		if dst.IsNull() {
+			if src.IsWhollyKnown() && src.LengthInt() == 0 && apply {
+				return src
+			}
+
+			// if dst is null and src only contains unknown values, then we lost
+			// those during a read or plan.
+			if !apply && !src.IsNull() {
+				allUnknown := true
+				for _, v := range src.AsValueSlice() {
+					if v.IsKnown() {
+						allUnknown = false
+						break
+					}
+				}
+				if allUnknown {
+					return src
+				}
+			}
+
+			return dst
+		}
+
+		// if the lengths are identical, then iterate over each element in succession.
+		srcLen := src.LengthInt()
+		dstLen := dst.LengthInt()
+		if srcLen == dstLen && srcLen > 0 {
+			srcs := src.AsValueSlice()
+			dsts := dst.AsValueSlice()
+
+			for i := 0; i < srcLen; i++ {
+				dsts[i] = normalizeNullValues(dsts[i], srcs[i], apply)
+			}
+
+			if ty.IsTupleType() {
+				return cty.TupleVal(dsts)
+			}
+			return cty.ListVal(dsts)
+		}
+
+	case ty == cty.String:
+		// The legacy SDK should not be able to remove a value during plan or
+		// apply, however we are only going to overwrite this if the source was
+		// an empty string, since that is what is often equated with unset and
+		// lost in the diff process.
+		if dst.IsNull() && src.AsString() == "" {
+			return src
+		}
+	}
+
+	return dst
+}
+
+// helper/schema throws away timeout values from the config and stores them in
+// the Private/Meta fields. we need to copy those values into the planned state
+// so that core doesn't see a perpetual diff with the timeout block.
+func copyTimeoutValues(to cty.Value, from cty.Value) cty.Value {
+	// if `to` is null we are planning to remove it altogether.
+	if to.IsNull() {
+		return to
+	}
+	toAttrs := to.AsValueMap()
+	// We need to remove the key since the hcl2shims will add a non-null block
+	// because we can't determine if a single block was null from the flatmapped
+	// values. This needs to conform to the correct schema for marshaling, so
+	// change the value to null rather than deleting it from the object map.
+	timeouts, ok := toAttrs[schema.TimeoutsConfigKey]
+	if ok {
+		toAttrs[schema.TimeoutsConfigKey] = cty.NullVal(timeouts.Type())
+	}
+
+	// if from is null then there are no timeouts to copy
+	if from.IsNull() {
+		return cty.ObjectVal(toAttrs)
+	}
+
+	fromAttrs := from.AsValueMap()
+	timeouts, ok = fromAttrs[schema.TimeoutsConfigKey]
+
+	// timeouts shouldn't be unknown, but don't copy possibly invalid values either
+	if !ok || timeouts.IsNull() || !timeouts.IsWhollyKnown() {
+		// no timeouts block to copy
+		return cty.ObjectVal(toAttrs)
+	}
+
+	toAttrs[schema.TimeoutsConfigKey] = timeouts
+
+	return cty.ObjectVal(toAttrs)
 }
