@@ -18,6 +18,8 @@ import (
 	"github.com/zclconf/go-cty/cty/convert"
 )
 
+const newExtraKey = "_new_extra_shim"
+
 // Provider implements the provider.Interface wrapping the legacy
 // ResourceProvider but not using gRPC like terraform does
 type Provider struct {
@@ -364,7 +366,197 @@ func (p *Provider) ReadResource(req providers.ReadResourceRequest) (resp provide
 // Takes the current state and proposed state of a resource, and returns the
 // planned final state.
 func (p *Provider) PlanResourceChange(req providers.PlanResourceChangeRequest) (resp providers.PlanResourceChangeResponse) {
-	return providers.PlanResourceChangeResponse{}
+	// This is a signal to Terraform Core that we're doing the best we can to
+	// shim the legacy type system of the SDK onto the Terraform type system
+	// but we need it to cut us some slack. This setting should not be taken
+	// forward to any new SDK implementations, since setting it prevents us
+	// from catching certain classes of provider bug that can lead to
+	// confusing downstream errors.
+	resp.LegacyTypeSystem = true
+
+	res := p.provider.ResourcesMap[req.TypeName]
+	schemaBlock := p.getResourceSchemaBlock(req.TypeName)
+
+	priorStateVal := req.PriorState
+
+	create := priorStateVal.IsNull()
+
+	proposedNewStateVal := req.ProposedNewState
+
+	// We don't usually plan destroys, but this can return early in any case.
+	if proposedNewStateVal.IsNull() {
+		resp.PlannedState = req.ProposedNewState
+		resp.PlannedPrivate = req.PriorPrivate
+		return resp
+	}
+
+	info := &terraform.InstanceInfo{
+		Type: req.TypeName,
+	}
+
+	priorState, err := res.ShimInstanceStateFromValue(priorStateVal)
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+	priorPrivate := make(map[string]interface{})
+	if len(req.PriorPrivate) > 0 {
+		if err := json.Unmarshal(req.PriorPrivate, &priorPrivate); err != nil {
+			resp.Diagnostics = resp.Diagnostics.Append(err)
+			return resp
+		}
+	}
+
+	priorState.Meta = priorPrivate
+
+	// Ensure there are no nulls that will cause helper/schema to panic.
+	if err := validateConfigNulls(proposedNewStateVal, nil); err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+
+	// turn the proposed state into a legacy configuration
+	cfg := terraform.NewResourceConfigShimmed(proposedNewStateVal, schemaBlock)
+
+	diff, err := p.provider.SimpleDiff(info, priorState, cfg)
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+
+	// if this is a new instance, we need to make sure ID is going to be computed
+	if create {
+		if diff == nil {
+			diff = terraform.NewInstanceDiff()
+		}
+
+		diff.Attributes["id"] = &terraform.ResourceAttrDiff{
+			NewComputed: true,
+		}
+	}
+
+	if diff == nil || len(diff.Attributes) == 0 {
+		// schema.Provider.Diff returns nil if it ends up making a diff with no
+		// changes, but our new interface wants us to return an actual change
+		// description that _shows_ there are no changes. This is always the
+		// prior state, because we force a diff above if this is a new instance.
+		resp.PlannedState = req.PriorState
+		resp.PlannedPrivate = req.PriorPrivate
+		return resp
+	}
+
+	if priorState == nil {
+		priorState = &terraform.InstanceState{}
+	}
+
+	// now we need to apply the diff to the prior state, so get the planned state
+	plannedAttrs, err := diff.Apply(priorState.Attributes, schemaBlock)
+
+	plannedStateVal, err := hcl2shim.HCL2ValueFromFlatmap(plannedAttrs, schemaBlock.ImpliedType())
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+
+	plannedStateVal, err = schemaBlock.CoerceValue(plannedStateVal)
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+
+	plannedStateVal = normalizeNullValues(plannedStateVal, proposedNewStateVal, false)
+	plannedStateVal = copyTimeoutValues(plannedStateVal, proposedNewStateVal)
+
+	// The old SDK code has some imprecisions that cause it to sometimes
+	// generate differences that the SDK itself does not consider significant
+	// but Terraform Core would. To avoid producing weird do-nothing diffs
+	// in that case, we'll check if the provider as produced something we
+	// think is "equivalent" to the prior state and just return the prior state
+	// itself if so, thus ensuring that Terraform Core will treat this as
+	// a no-op. See the docs for ValuesSDKEquivalent for some caveats on its
+	// accuracy.
+	forceNoChanges := false
+	if hcl2shim.ValuesSDKEquivalent(priorStateVal, plannedStateVal) {
+		plannedStateVal = priorStateVal
+		forceNoChanges = true
+	}
+
+	// if this was creating the resource, we need to set any remaining computed
+	// fields
+	if create {
+		plannedStateVal = SetUnknowns(plannedStateVal, schemaBlock)
+	}
+
+	resp.PlannedState = plannedStateVal
+
+	// encode any timeouts into the diff Meta
+	t := &schema.ResourceTimeout{}
+	if err := t.ConfigDecode(res, cfg); err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+
+	if err := t.DiffEncode(diff); err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+
+	// Now we need to store any NewExtra values, which are where any actual
+	// StateFunc modified config fields are hidden.
+	privateMap := diff.Meta
+	if privateMap == nil {
+		privateMap = map[string]interface{}{}
+	}
+
+	newExtra := map[string]interface{}{}
+
+	for k, v := range diff.Attributes {
+		if v.NewExtra != nil {
+			newExtra[k] = v.NewExtra
+		}
+	}
+	privateMap[newExtraKey] = newExtra
+
+	// the Meta field gets encoded into PlannedPrivate
+	plannedPrivate, err := json.Marshal(privateMap)
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+	resp.PlannedPrivate = plannedPrivate
+
+	// collect the attributes that require instance replacement, and convert
+	// them to cty.Paths.
+	var requiresNew []string
+	if !forceNoChanges {
+		for attr, d := range diff.Attributes {
+			if d.RequiresNew {
+				requiresNew = append(requiresNew, attr)
+			}
+		}
+	}
+
+	// If anything requires a new resource already, or the "id" field indicates
+	// that we will be creating a new resource, then we need to add that to
+	// RequiresReplace so that core can tell if the instance is being replaced
+	// even if changes are being suppressed via "ignore_changes".
+	id := plannedStateVal.GetAttr("id")
+	if len(requiresNew) > 0 || id.IsNull() || !id.IsKnown() {
+		requiresNew = append(requiresNew, "id")
+	}
+
+	requiresReplace, err := hcl2shim.RequiresReplace(requiresNew, schemaBlock.ImpliedType())
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+
+	// convert these to the protocol structures
+	for _, p := range requiresReplace {
+		resp.RequiresReplace = append(resp.RequiresReplace, p)
+	}
+
+	return resp
 }
 
 // ApplyResourceChange implements the ApplyResourceChange from providers.Interface.
@@ -954,4 +1146,127 @@ func copyTimeoutValues(to cty.Value, from cty.Value) cty.Value {
 	toAttrs[schema.TimeoutsConfigKey] = timeouts
 
 	return cty.ObjectVal(toAttrs)
+}
+
+// SetUnknowns takes a cty.Value, and compares it to the schema setting any null
+// values which are computed to unknown.
+func SetUnknowns(val cty.Value, schema *configschema.Block) cty.Value {
+	if !val.IsKnown() {
+		return val
+	}
+
+	// If the object was null, we still need to handle the top level attributes
+	// which might be computed, but we don't need to expand the blocks.
+	if val.IsNull() {
+		objMap := map[string]cty.Value{}
+		allNull := true
+		for name, attr := range schema.Attributes {
+			switch {
+			case attr.Computed:
+				objMap[name] = cty.UnknownVal(attr.Type)
+				allNull = false
+			default:
+				objMap[name] = cty.NullVal(attr.Type)
+			}
+		}
+
+		// If this object has no unknown attributes, then we can leave it null.
+		if allNull {
+			return val
+		}
+
+		return cty.ObjectVal(objMap)
+	}
+
+	valMap := val.AsValueMap()
+	newVals := make(map[string]cty.Value)
+
+	for name, attr := range schema.Attributes {
+		v := valMap[name]
+
+		if attr.Computed && v.IsNull() {
+			newVals[name] = cty.UnknownVal(attr.Type)
+			continue
+		}
+
+		newVals[name] = v
+	}
+
+	for name, blockS := range schema.BlockTypes {
+		blockVal := valMap[name]
+		if blockVal.IsNull() || !blockVal.IsKnown() {
+			newVals[name] = blockVal
+			continue
+		}
+
+		blockValType := blockVal.Type()
+		blockElementType := blockS.Block.ImpliedType()
+
+		// This switches on the value type here, so we can correctly switch
+		// between Tuples/Lists and Maps/Objects.
+		switch {
+		case blockS.Nesting == configschema.NestingSingle || blockS.Nesting == configschema.NestingGroup:
+			// NestingSingle is the only exception here, where we treat the
+			// block directly as an object
+			newVals[name] = SetUnknowns(blockVal, &blockS.Block)
+
+		case blockValType.IsSetType(), blockValType.IsListType(), blockValType.IsTupleType():
+			listVals := blockVal.AsValueSlice()
+			newListVals := make([]cty.Value, 0, len(listVals))
+
+			for _, v := range listVals {
+				newListVals = append(newListVals, SetUnknowns(v, &blockS.Block))
+			}
+
+			switch {
+			case blockValType.IsSetType():
+				switch len(newListVals) {
+				case 0:
+					newVals[name] = cty.SetValEmpty(blockElementType)
+				default:
+					newVals[name] = cty.SetVal(newListVals)
+				}
+			case blockValType.IsListType():
+				switch len(newListVals) {
+				case 0:
+					newVals[name] = cty.ListValEmpty(blockElementType)
+				default:
+					newVals[name] = cty.ListVal(newListVals)
+				}
+			case blockValType.IsTupleType():
+				newVals[name] = cty.TupleVal(newListVals)
+			}
+
+		case blockValType.IsMapType(), blockValType.IsObjectType():
+			mapVals := blockVal.AsValueMap()
+			newMapVals := make(map[string]cty.Value)
+
+			for k, v := range mapVals {
+				newMapVals[k] = SetUnknowns(v, &blockS.Block)
+			}
+
+			switch {
+			case blockValType.IsMapType():
+				switch len(newMapVals) {
+				case 0:
+					newVals[name] = cty.MapValEmpty(blockElementType)
+				default:
+					newVals[name] = cty.MapVal(newMapVals)
+				}
+			case blockValType.IsObjectType():
+				if len(newMapVals) == 0 {
+					// We need to populate empty values to make a valid object.
+					for attr, ty := range blockElementType.AttributeTypes() {
+						newMapVals[attr] = cty.NullVal(ty)
+					}
+				}
+				newVals[name] = cty.ObjectVal(newMapVals)
+			}
+
+		default:
+			panic(fmt.Sprintf("failed to set unknown values for nested block %q:%#v", name, blockValType))
+		}
+	}
+
+	return cty.ObjectVal(newVals)
 }
