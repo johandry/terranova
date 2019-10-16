@@ -23,6 +23,7 @@ import (
 	"os"
 
 	"github.com/hashicorp/terraform/providers"
+	"github.com/hashicorp/terraform/provisioners"
 	"github.com/hashicorp/terraform/states"
 	"github.com/hashicorp/terraform/states/statefile"
 	"github.com/hashicorp/terraform/terraform"
@@ -33,7 +34,7 @@ import (
 type Platform struct {
 	Code         string
 	Providers    map[string]providers.Factory
-	Provisioners map[string]terraform.ProvisionerFactory
+	Provisioners map[string]provisioners.Factory
 	Vars         map[string]interface{}
 	State        *State
 }
@@ -65,18 +66,13 @@ func (p *Platform) AddProvider(name string, provider terraform.ResourceProvider)
 	return p
 }
 
-func providersFactory(rp terraform.ResourceProvider) providers.Factory {
-	p := NewProvider(rp)
-	return providers.FactoryFixed(p)
-}
-
 func (p *Platform) addDefaultProvisioners() {
-	p.Provisioners = map[string]terraform.ProvisionerFactory{}
+	p.Provisioners = map[string]provisioners.Factory{}
 }
 
 // AddProvisioner adds a new provisioner to the provisioner list
-func (p *Platform) AddProvisioner(name string, provisioner terraform.ProvisionerFactory) *Platform {
-	p.Provisioners[name] = provisioner
+func (p *Platform) AddProvisioner(name string, provisioner terraform.ResourceProvisioner) *Platform {
+	p.Provisioners[name] = provisionersFactory(provisioner)
 	return p
 }
 
