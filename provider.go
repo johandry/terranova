@@ -563,7 +563,135 @@ func (p *Provider) PlanResourceChange(req providers.PlanResourceChangeRequest) (
 // Takes the planned state for a resource, which may yet contain unknown computed
 // values, and applies the changes returning the final state.
 func (p *Provider) ApplyResourceChange(req providers.ApplyResourceChangeRequest) (resp providers.ApplyResourceChangeResponse) {
-	return providers.ApplyResourceChangeResponse{}
+	resp.NewState = req.PriorState
+
+	res := p.provider.ResourcesMap[req.TypeName]
+	schemaBlock := p.getResourceSchemaBlock(req.TypeName)
+
+	priorStateVal := req.PriorState
+	plannedStateVal := req.PlannedState
+
+	info := &terraform.InstanceInfo{
+		Type: req.TypeName,
+	}
+
+	priorState, err := res.ShimInstanceStateFromValue(priorStateVal)
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+
+	private := make(map[string]interface{})
+	if len(req.PlannedPrivate) > 0 {
+		if err := json.Unmarshal(req.PlannedPrivate, &private); err != nil {
+			resp.Diagnostics = resp.Diagnostics.Append(err)
+			return resp
+		}
+	}
+
+	var diff *terraform.InstanceDiff
+	destroy := false
+
+	// a null state means we are destroying the instance
+	if plannedStateVal.IsNull() {
+		destroy = true
+		diff = &terraform.InstanceDiff{
+			Attributes: make(map[string]*terraform.ResourceAttrDiff),
+			Meta:       make(map[string]interface{}),
+			Destroy:    true,
+		}
+	} else {
+		diff, err = schema.DiffFromValues(priorStateVal, plannedStateVal, stripResourceModifiers(res))
+		if err != nil {
+			resp.Diagnostics = resp.Diagnostics.Append(err)
+			return resp
+		}
+	}
+
+	if diff == nil {
+		diff = &terraform.InstanceDiff{
+			Attributes: make(map[string]*terraform.ResourceAttrDiff),
+			Meta:       make(map[string]interface{}),
+		}
+	}
+
+	// add NewExtra Fields that may have been stored in the private data
+	if newExtra := private[newExtraKey]; newExtra != nil {
+		for k, v := range newExtra.(map[string]interface{}) {
+			d := diff.Attributes[k]
+
+			if d == nil {
+				d = &terraform.ResourceAttrDiff{}
+			}
+
+			d.NewExtra = v
+			diff.Attributes[k] = d
+		}
+	}
+
+	if private != nil {
+		diff.Meta = private
+	}
+
+	for k, d := range diff.Attributes {
+		// We need to turn off any RequiresNew. There could be attributes
+		// without changes in here inserted by helper/schema, but if they have
+		// RequiresNew then the state will be dropped from the ResourceData.
+		d.RequiresNew = false
+
+		// Check that any "removed" attributes that don't actually exist in the
+		// prior state, or helper/schema will confuse itself
+		if d.NewRemoved {
+			if _, ok := priorState.Attributes[k]; !ok {
+				delete(diff.Attributes, k)
+			}
+		}
+	}
+
+	newInstanceState, err := p.provider.Apply(info, priorState, diff)
+	// we record the error here, but continue processing any returned state.
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+	}
+	newStateVal := cty.NullVal(schemaBlock.ImpliedType())
+
+	// Always return a null value for destroy.
+	// While this is usually indicated by a nil state, check for missing ID or
+	// attributes in the case of a provider failure.
+	if destroy || newInstanceState == nil || newInstanceState.Attributes == nil || newInstanceState.ID == "" {
+		resp.NewState = newStateVal
+		return resp
+	}
+
+	// We keep the null val if we destroyed the resource, otherwise build the
+	// entire object, even if the new state was nil.
+	newStateVal, err = schema.StateValueFromInstanceState(newInstanceState, schemaBlock.ImpliedType())
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+
+	newStateVal = normalizeNullValues(newStateVal, plannedStateVal, true)
+	newStateVal = copyTimeoutValues(newStateVal, plannedStateVal)
+
+	resp.NewState = newStateVal
+
+	meta, err := json.Marshal(newInstanceState.Meta)
+	if err != nil {
+		resp.Diagnostics = resp.Diagnostics.Append(err)
+		return resp
+	}
+	resp.Private = meta
+
+	// This is a signal to Terraform Core that we're doing the best we can to
+	// shim the legacy type system of the SDK onto the Terraform type system
+	// but we need it to cut us some slack. This setting should not be taken
+	// forward to any new SDK implementations, since setting it prevents us
+	// from catching certain classes of provider bug that can lead to
+	// confusing downstream errors.
+	resp.LegacyTypeSystem = true
+
+	return resp
 }
 
 // ImportResourceState implements the ImportResourceState from providers.Interface.
@@ -1269,4 +1397,46 @@ func SetUnknowns(val cty.Value, schema *configschema.Block) cty.Value {
 	}
 
 	return cty.ObjectVal(newVals)
+}
+
+// stripResourceModifiers takes a *schema.Resource and returns a deep copy with all
+// StateFuncs and CustomizeDiffs removed. This will be used during apply to
+// create a diff from a planned state where the diff modifications have already
+// been applied.
+func stripResourceModifiers(r *schema.Resource) *schema.Resource {
+	if r == nil {
+		return nil
+	}
+	// start with a shallow copy
+	newResource := new(schema.Resource)
+	*newResource = *r
+
+	newResource.CustomizeDiff = nil
+	newResource.Schema = map[string]*schema.Schema{}
+
+	for k, s := range r.Schema {
+		newResource.Schema[k] = stripSchema(s)
+	}
+
+	return newResource
+}
+
+func stripSchema(s *schema.Schema) *schema.Schema {
+	if s == nil {
+		return nil
+	}
+	// start with a shallow copy
+	newSchema := new(schema.Schema)
+	*newSchema = *s
+
+	newSchema.StateFunc = nil
+
+	switch e := newSchema.Elem.(type) {
+	case *schema.Schema:
+		newSchema.Elem = stripSchema(e)
+	case *schema.Resource:
+		newSchema.Elem = stripResourceModifiers(e)
+	}
+
+	return newSchema
 }
