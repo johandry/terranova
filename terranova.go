@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/hashicorp/terraform/backend/local"
 	"github.com/hashicorp/terraform/configs"
 	"github.com/hashicorp/terraform/configs/configload"
 	"github.com/hashicorp/terraform/plans"
@@ -35,6 +36,14 @@ import (
 // Apply brings the platform to the desired state. It'll destroy the platform
 // when `destroy` is `true`.
 func (p *Platform) Apply(destroy bool) error {
+	countHook := new(local.CountHook)
+	stateHook := new(local.StateHook)
+
+	if p.Hooks == nil {
+		p.Hooks = []terraform.Hook{}
+	}
+	p.Hooks = append(p.Hooks, countHook, stateHook)
+
 	ctx, err := p.newContext(destroy)
 	if err != nil {
 		return err
@@ -103,6 +112,7 @@ func (p *Platform) newContext(destroy bool) (*terraform.Context, error) {
 		Variables:        vars,
 		ProviderResolver: providers.ResolverFixed(p.Providers),
 		Provisioners:     p.Provisioners,
+		Hooks:            p.Hooks,
 	}
 
 	ctx, diags := terraform.NewContext(&ctxOpts)
@@ -156,24 +166,6 @@ func (p *Platform) config() (*configs.Config, error) {
 	}
 
 	return config, nil
-
-	// mod, err := module.NewTreeModule("", cfgPath)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	// s := module.NewStorage(filepath.Join(cfgPath, "modules"), nil)
-	// s.Mode = module.GetModeNone // or module.GetModeGet?
-
-	// if err := mod.Load(s); err != nil {
-	// 	return nil, fmt.Errorf("failed to load the modules. %s", err)
-	// }
-
-	// if err := mod.Validate().Err(); err != nil {
-	// 	return nil, fmt.Errorf("failed Terraform code validation. %s", err)
-	// }
-
-	// return mod, nil
 }
 
 func (p *Platform) variables(v map[string]*configs.Variable) (terraform.InputValues, error) {
@@ -193,19 +185,3 @@ func (p *Platform) variables(v map[string]*configs.Variable) (terraform.InputVal
 
 	return iv, nil
 }
-
-// func (p *Platform) getProviderResolver() providers.Resolver {
-// 	return providers.ResolverFixed(p.Providers)
-// }
-
-// func (p *Platform) getProvisioners() map[string]terraform.ResourceProvisionerFactory {
-// 	provisioners := make(map[string]terraform.ResourceProvisionerFactory)
-
-// 	for name, provisioner := range p.Provisioners {
-// 		provisioners[name] = func() (terraform.ResourceProvisioner, error) {
-// 			return provisioner, nil
-// 		}
-// 	}
-
-// 	return provisioners
-// }
