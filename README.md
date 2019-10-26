@@ -1,8 +1,8 @@
 # Terranova
 
-Terranova is a Go package that allow you to use the Terraform Go Packages instead of using the binary. It works with the Terraform version `0.12.9`.
+Terranova is a Go package that allows you to easily use the Terraform Go Packages instead of executing the Terraform binary. The version `v0.0.2` of Terranova works with the latest version of Terraform `v0.12.12`.
 
-For more information about Terranova and how to use use it, refer to the blog post [Terranova: Using Terraform from Go](http://blog.johandry.com/post/terranova-terraform-from-go/)
+For more information about Terranova and how to use use it, refer to the blog post [Terranova: Using Terraform from Go](http://blog.johandry.com/post/terranova-terraform-from-go/).
 
 ## How to use the Terranova package
 
@@ -14,7 +14,7 @@ import (
 )
 ```
 
-As soon as you execute a Go command such as `go build` or `go test` it will be included in your `go.mod` file and downloaded.
+As soon as you execute a Go command such as `go build`, `go test` or `go mod tidy` it will be included in your `go.mod` file and downloaded.
 
 If you are not using modules yet, using vendors or having the packages in `$GOPATH`, please, `git clone` the repository and create the vendor directory:
 
@@ -30,10 +30,12 @@ After having the package, the high level use of Terranova is like follows:
 1. Create a *Platform* instance with the Terraform *code* to apply
 2. Get (`go get`), import and add (`AddProvider()`) the Terraform *Provider(s)* used in the code
 3. Get (`go get`), import and add (`AddProvisioner()`) the  the Terraform *Provisioner* (if any) used in the Terraform code
-4. Add (`Var()`) the *variables* used in the Terraform code
-5. Load the previous *state* of the infrastructure using `ReadStateFromFile()` or `ReadState()` methods.
-6. *Apply* the changes using the method `Apply()`
-7. Save the final *state* of the infrastructure using `WriteStateToFile()` or `WriteState()` methods.
+4. Add (`Var()` or `BindVars()`) the *variables* used in the Terraform code
+5. (optional) Create (`NewMiddleware()`) a logger middleware with the default logger, a custom one (`NewLog()`) or your own that implements the `Logger` interface
+6. (optional) Create your custom Terraform Hooks and assign them to the *Platform* instance
+7. Load the previous *state* of the infrastructure using `ReadStateFromFile()` or `ReadState()` methods.
+8. *Apply* the changes using the method `Apply()`
+9. Save the final *state* of the infrastructure using `WriteStateToFile()` or `WriteState()` methods.
 
 The following example shows how to create, scale or terminate AWS EC2 instances:
 
@@ -82,7 +84,7 @@ func main() {
 
 func init() {
   code = `
-  variable "c"    { default = 2 }
+  variable "c"   { default = 2 }
   variable "key_name" {}
   provider "aws" {
     region        = "us-west-2"
@@ -100,6 +102,53 @@ func init() {
 Read the same example at [terranova-examples/aws/simple/main.go](https://github.com/johandry/terranova-examples/blob/master/aws/simple/main.go) and the blog post [Terranova: Using Terraform from Go](http://blog.johandry.com/post/terranova-terraform-from-go/) for a detail explanation of the code.
 
 The git repository [terranova-examples](https://github.com/johandry/terranova-examples) contain more examples of how to use Terranova with different clouds or providers.
+
+## Providers version
+
+Terranova works with the latest version of Terraform (`v0.12.12`) but requires Terraform providers using the Legacy Terraform Plugin SDK instead of the newer Terraform Plugin SDK. If the required provider still uses the Legacy Terraform Plugin SDK select the latest release using the Terraform Plugin SDK. For more information read the [Terraform Plugin SDK page in the Extending Terraform documentation](https://www.terraform.io/docs/extend/plugin-sdk.html).
+
+These are the latest versions supported for some providers:
+
+- **AWS**:   `github.com/terraform-providers/terraform-provider-aws v1.60.1-0.20191003145700-f8707a46c6ec`
+- **OpenStack**: `github.com/terraform-providers/terraform-provider-openstack v1.23.0`
+- **vSphere**: `github.com/terraform-providers/terraform-provider-vsphere v1.13.0`
+- **Azure**: `github.com/terraform-providers/terraform-provider-azurerm v1.34.0`
+- **Null**: `github.com/terraform-providers/terraform-provider-null v1.0.1-0.20190430203517-8d3d85a60e20`
+- **Template**: `github.com/terraform-providers/terraform-provider-template v1.0.1-0.20190501175038-5333ad92003c`
+- **TLS**: `github.com/terraform-providers/terraform-provider-tls v1.2.1-0.20190816230231-0790c4b40281`
+
+ Include the code line in the `require` section of your `go.mod` file for the provider you are importing, for example:
+
+```go
+require (
+	github.com/hashicorp/terraform v0.12.12
+	github.com/johandry/terranova v0.0.2
+	github.com/terraform-providers/terraform-provider-openstack v1.23.0
+	github.com/terraform-providers/terraform-provider-vsphere v1.13.0
+)
+```
+
+If you get an error for a provider that you are not directly using (i.e. TLS provider) include the required version in the `replace` section of the `go.mod` file, for example:
+
+```go
+replace (
+  github.com/terraform-providers/terraform-provider-tls => github.com/terraform-providers/terraform-provider-tls v1.2.1-0.20190816230231-0790c4b40281
+)
+```
+
+If the required provider is not in this list, you can identify the version like this:
+
+1. Go to the GitHub project of the provider
+2. Locate the `provider.go` file located in the directory named like the provider name (i.e. `was/provider.go`)
+3. If the file imports `terraform-plugin-sdk/terraform` go to the previous git tag. 
+4. Repeat step #3 until you find the latest tag importing `terraform/terraform` (i.e. the latest tag for AWS is `v2.31.0`)
+5. If the tag can be used in the `go.mod` file, just include it after the module name, for example: `terraform-provider-vsphere v1.13.0`
+6. If the tag cannot be used in the `go.mod` file, for example `v2.31.0` for AWS:
+   1. Find the release generated from the git tag (i.e. v2.31.0)
+   2. Locate the hash number assigned to the release (i.e. `f8707a4`)
+   3. Include the number in the `go.mod` file and execute `go mod tidy` or any other go command such as `go test` or `go build`.
+
+If this is not working and need help to identify the right version, open an issue and you'll be help as soon as possible.
 
 ## Sources
 
