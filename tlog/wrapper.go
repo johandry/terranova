@@ -1,4 +1,4 @@
-package log
+package tlog
 
 import (
 	"fmt"
@@ -54,7 +54,7 @@ func (l *Log) Debugf(format string, args ...interface{}) {
 	if l.Level < LogLevelDebug {
 		return
 	}
-	if l.Level == LogLevelTrace {
+	if strings.HasPrefix(format, TracePrefix) {
 		l.tracef(format, args...)
 		return
 	}
@@ -63,10 +63,10 @@ func (l *Log) Debugf(format string, args ...interface{}) {
 
 // tracef is a second level of debug, it's call by Debugf when TraceLevel is set
 func (l *Log) tracef(format string, args ...interface{}) {
-	// if l.Level < LogLevelTrace {
-	// 	return
-	// }
-	format = strings.TrimPrefix(format, "[LEVEL 2] ")
+	if l.Level < LogLevelTrace {
+		return
+	}
+	format = strings.TrimPrefix(format, TracePrefix)
 	l.output("TRACE", format, args...)
 }
 

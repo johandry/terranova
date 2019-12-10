@@ -1,4 +1,4 @@
-package log
+package tlog
 
 import (
 	"io"
@@ -19,6 +19,9 @@ type Logger interface {
 	Errorf(format string, args ...interface{})
 }
 
+// TracePrefix is the prefix used to print a Terraform trace entry log
+const TracePrefix = "[TRACE] "
+
 // Middleware implementations io.Writer to capture all the Terraform logs using
 // the "log" package and send them to the defined logger
 type Middleware struct {
@@ -29,14 +32,17 @@ type Middleware struct {
 
 // NewMiddleware creates a new instance of Middleware with the Standard
 // Logger (if nil) a the given logger
-func NewMiddleware(l Logger) *Middleware {
+func NewMiddleware(l ...Logger) *Middleware {
+	var lgr Logger
 	// If there is no logger, use the Terranova log wrapper
-	if l == nil {
-		l = NewLog(os.Stdout, "", DefLogLevel)
+	if len(l) == 0 || l[0] == nil {
+		lgr = NewLog(os.Stdout, "", DefLogLevel)
+	} else {
+		lgr = l[0]
 	}
 
 	m := &Middleware{
-		log: l,
+		log: lgr,
 	}
 
 	// Redirect the Terraform log output to the middleware. Then Write() will send
@@ -82,16 +88,12 @@ func (m *Middleware) Write(p []byte) (n int, err error) {
 			case "DEBUG":
 				m.log.Debugf(logMessage)
 			case "TRACE":
-				m.log.Debugf("[LEVEL 2] %s", logMessage)
+				m.log.Debugf(TracePrefix+"%s", logMessage)
 			default:
-				// If there is a log entry with an unknown label (i.e. "[X]") in cyan,
-				// improve the log output including the missing label in the switch/case
-				m.log.Printf("\x1B[36m[%s]\x1B[0m (Unknown Log Label) %s", match[1], logMessage)
+				m.log.Printf("[%s] %s", match[1], logMessage)
 			}
 		} else {
-			// If you see something starting with ">", improve the log output
-			// including the missing pattern in the regex
-			m.log.Printf("> %s", p)
+			m.log.Printf("%s", p)
 		}
 	} else {
 		// The regexp search for a timestamp and log message
@@ -101,9 +103,7 @@ func (m *Middleware) Write(p []byte) (n int, err error) {
 		if len(matchDate) == 2 {
 			m.log.Printf(matchDate[1])
 		} else {
-			// If you see something starting with ">>", improve the log output
-			// including the missing pattern in the regexp
-			m.log.Printf(">> %s", p)
+			m.log.Printf("%s", p)
 		}
 	}
 
