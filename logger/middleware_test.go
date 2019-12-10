@@ -1,4 +1,4 @@
-package tlog
+package logger
 
 import (
 	"io/ioutil"

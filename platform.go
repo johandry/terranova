@@ -27,7 +27,7 @@ import (
 	"github.com/hashicorp/terraform/states"
 	"github.com/hashicorp/terraform/states/statefile"
 	"github.com/hashicorp/terraform/terraform"
-	"github.com/johandry/terranova/tlog"
+	"github.com/johandry/terranova/logger"
 	"github.com/terraform-providers/terraform-provider-null/null"
 )
 
@@ -39,7 +39,7 @@ type Platform struct {
 	Vars          map[string]interface{}
 	State         *State
 	Hooks         []terraform.Hook
-	LogMiddleware *tlog.Middleware
+	LogMiddleware *logger.Middleware
 }
 
 // State is an alias for terraform.State
@@ -137,7 +137,7 @@ func (p *Platform) ReadStateFromFile(filename string) (*Platform, error) {
 }
 
 // AddMiddleware adds the given log middleware into the Platform
-func (p *Platform) AddMiddleware(lm *tlog.Middleware) *Platform {
+func (p *Platform) AddMiddleware(lm *logger.Middleware) *Platform {
 	p.LogMiddleware = lm
 	return p
 }
