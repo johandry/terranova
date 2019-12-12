@@ -1,4 +1,4 @@
-name: Test Go Code
+name: Unit Test
 on: [push, pull_request]
 jobs:
 
