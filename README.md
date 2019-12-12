@@ -129,7 +129,7 @@ These are the latest versions supported for some providers:
 ```go
 require (
   github.com/hashicorp/terraform v0.12.12
-  github.com/johandry/terranova v0.0.2
+  github.com/johandry/terranova v0.0.3
   github.com/terraform-providers/terraform-provider-openstack v1.23.0
   github.com/terraform-providers/terraform-provider-vsphere v1.13.0
 )
