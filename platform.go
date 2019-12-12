@@ -27,25 +27,29 @@ import (
 	"github.com/hashicorp/terraform/states"
 	"github.com/hashicorp/terraform/states/statefile"
 	"github.com/hashicorp/terraform/terraform"
+	"github.com/johandry/terranova/logger"
 	"github.com/terraform-providers/terraform-provider-null/null"
 )
 
 // Platform is the platform to be managed by Terraform
 type Platform struct {
-	Code         string
-	Providers    map[string]providers.Factory
-	Provisioners map[string]provisioners.Factory
-	Vars         map[string]interface{}
-	State        *State
+	Code          string
+	Providers     map[string]providers.Factory
+	Provisioners  map[string]provisioners.Factory
+	Vars          map[string]interface{}
+	State         *State
+	Hooks         []terraform.Hook
+	LogMiddleware *logger.Middleware
 }
 
 // State is an alias for terraform.State
 type State = states.State
 
 // NewPlatform return an instance of Platform with default values
-func NewPlatform(code string) *Platform {
+func NewPlatform(code string, hooks ...terraform.Hook) *Platform {
 	platform := &Platform{
-		Code: code,
+		Code:  code,
+		Hooks: hooks,
 	}
 	platform.addDefaultProviders()
 	platform.addDefaultProvisioners()
@@ -130,4 +134,10 @@ func (p *Platform) ReadStateFromFile(filename string) (*Platform, error) {
 		return p, err
 	}
 	return p.ReadState(file)
+}
+
+// AddMiddleware adds the given log middleware into the Platform
+func (p *Platform) AddMiddleware(lm *logger.Middleware) *Platform {
+	p.LogMiddleware = lm
+	return p
 }

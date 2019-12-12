@@ -104,8 +104,6 @@ func (p *Provider) GetSchema() (resp providers.GetSchemaResponse) {
 // providers.Interface. Allows the provider to validate the configuration
 // values, and set or override any values with defaults.
 func (p *Provider) PrepareProviderConfig(req providers.PrepareProviderConfigRequest) (resp providers.PrepareProviderConfigResponse) {
-	schema := p.getSchema()
-
 	// lookup any required, top-level attributes that are Null, and see if we
 	// have a Default value available.
 	configVal, err := cty.Transform(req.Config, func(path cty.Path, val cty.Value) (cty.Value, error) {
@@ -171,6 +169,7 @@ func (p *Provider) PrepareProviderConfig(req providers.PrepareProviderConfigRequ
 		return resp
 	}
 
+	schema := p.getSchema()
 	configVal, err = schema.Provider.Block.CoerceValue(configVal)
 	if err != nil {
 		resp.Diagnostics = resp.Diagnostics.Append(err)
@@ -192,9 +191,6 @@ func (p *Provider) PrepareProviderConfig(req providers.PrepareProviderConfigRequ
 // providers.Interface. Allows the provider to validate the resource
 // configuration values.
 func (p *Provider) ValidateResourceTypeConfig(req providers.ValidateResourceTypeConfigRequest) (resp providers.ValidateResourceTypeConfigResponse) {
-	// Other way to get the schema block is from the schema:
-	// resourceSchema := p.getResourceSchema(req.TypeName)
-	// schemaBlock := resourceSchema.Block
 	schemaBlock := p.getResourceSchemaBlock(req.TypeName)
 
 	config := terraform.NewResourceConfigShimmed(req.Config, schemaBlock)
@@ -208,10 +204,6 @@ func (p *Provider) ValidateResourceTypeConfig(req providers.ValidateResourceType
 // ValidateDataSourceConfig implements the ValidateDataSourceConfig from providers.Interface.
 // Allows the provider to validate the data source configuration values.
 func (p *Provider) ValidateDataSourceConfig(req providers.ValidateDataSourceConfigRequest) (resp providers.ValidateDataSourceConfigResponse) {
-	// Other way is to get the data schema block from the schedule
-	// dataSchema := p.getDatasourceSchema(req.TypeName)
-	// schemaBlock := dataSchema.Block
-
 	// Ensure there are no nulls that will cause helper/schema to panic.
 	if err := validateConfigNulls(req.Config, nil); err != nil {
 		resp.Diagnostics = resp.Diagnostics.Append(err)
@@ -505,7 +497,7 @@ func (p *Provider) PlanResourceChange(req providers.PlanResourceChangeRequest) (
 	// if this was creating the resource, we need to set any remaining computed
 	// fields
 	if create {
-		plannedStateVal = SetUnknowns(plannedStateVal, schemaBlock)
+		plannedStateVal = setUnknowns(plannedStateVal, schemaBlock)
 	}
 
 	resp.PlannedState = plannedStateVal
@@ -897,18 +889,6 @@ func validateConfigNulls(v cty.Value, path cty.Path) []tfdiags.Diagnostic {
 	return diags
 }
 
-// getResourceSchema is a helper to extract the schema for a resource, and
-// panics if the schema is not available.
-// DELETE?
-func (p *Provider) getResourceSchema(name string) providers.Schema {
-	schema := p.getSchema()
-	resSchema, ok := schema.ResourceTypes[name]
-	if !ok {
-		panic("unknown resource type " + name)
-	}
-	return resSchema
-}
-
 func (p *Provider) getResourceSchemaBlock(name string) *configschema.Block {
 	res := p.provider.ResourcesMap[name]
 	return res.CoreConfigSchema()
@@ -926,18 +906,6 @@ func appendWarnsAndErrsToDiags(warns []string, errs []error) (diags []tfdiags.Di
 	}
 
 	return diags
-}
-
-// getDatasourceSchema is a helper to extract the schema for a datasource, and
-// panics if that schema is not available.
-// DELETE?
-func (p *Provider) getDatasourceSchema(name string) providers.Schema {
-	schema := p.getSchema()
-	dataSchema, ok := schema.DataSources[name]
-	if !ok {
-		panic("unknown data source " + name)
-	}
-	return dataSchema
 }
 
 func (p *Provider) getDatasourceSchemaBlock(name string) *configschema.Block {
@@ -1297,9 +1265,9 @@ func copyTimeoutValues(to cty.Value, from cty.Value) cty.Value {
 	return cty.ObjectVal(toAttrs)
 }
 
-// SetUnknowns takes a cty.Value, and compares it to the schema setting any null
+// setUnknowns takes a cty.Value, and compares it to the schema setting any null
 // values which are computed to unknown.
-func SetUnknowns(val cty.Value, schema *configschema.Block) cty.Value {
+func setUnknowns(val cty.Value, schema *configschema.Block) cty.Value {
 	if !val.IsKnown() {
 		return val
 	}
@@ -1357,14 +1325,14 @@ func SetUnknowns(val cty.Value, schema *configschema.Block) cty.Value {
 		case blockS.Nesting == configschema.NestingSingle || blockS.Nesting == configschema.NestingGroup:
 			// NestingSingle is the only exception here, where we treat the
 			// block directly as an object
-			newVals[name] = SetUnknowns(blockVal, &blockS.Block)
+			newVals[name] = setUnknowns(blockVal, &blockS.Block)
 
 		case blockValType.IsSetType(), blockValType.IsListType(), blockValType.IsTupleType():
 			listVals := blockVal.AsValueSlice()
 			newListVals := make([]cty.Value, 0, len(listVals))
 
 			for _, v := range listVals {
-				newListVals = append(newListVals, SetUnknowns(v, &blockS.Block))
+				newListVals = append(newListVals, setUnknowns(v, &blockS.Block))
 			}
 
 			switch {
@@ -1391,7 +1359,7 @@ func SetUnknowns(val cty.Value, schema *configschema.Block) cty.Value {
 			newMapVals := make(map[string]cty.Value)
 
 			for k, v := range mapVals {
-				newMapVals[k] = SetUnknowns(v, &blockS.Block)
+				newMapVals[k] = setUnknowns(v, &blockS.Block)
 			}
 
 			switch {
