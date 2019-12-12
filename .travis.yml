@@ -1,0 +1,16 @@
+language: go
+
+go:
+  - 1.13.x
+
+script:
+  - make check-fmt test
+
+env:
+  global:
+    - GOPROXY=https://proxy.golang.org
+    - GO111MODULE=on
+    - GOARCH=amd64
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash)
