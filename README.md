@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/johandry/terranova.svg?branch=master)](https://travis-ci.org/johandry/terranova) [![codecov](https://codecov.io/gh/johandry/terranova/branch/master/graph/badge.svg)](https://codecov.io/gh/johandry/terranova) [![GoDoc](https://godoc.org/github.com/johandry/terranova?status.svg)](https://godoc.org/github.com/johandry/terranova) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 # Terranova
 
 Terranova is a Go package that allows you to easily use the Terraform Go Packages instead of executing the Terraform binary. The version `v0.0.2` of Terranova works with the latest version of Terraform `v0.12.12`.

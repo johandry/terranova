@@ -11,6 +11,9 @@ vendor/**/.git
 vendor/**/
 !vendor/vendor.json
 
+# Testing files to ignore
+coverage.txt
+
 ## GO stuff to ignore
 
 # Compiled Object files, Static and Dynamic libs (Shared Objects)
