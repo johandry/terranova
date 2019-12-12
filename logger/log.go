@@ -13,7 +13,6 @@ type Log struct {
 	Prefix string
 	Level  Level
 	log    *log.Logger
-	// mu     sync.Mutex
 }
 
 // Level is the log level type
@@ -95,8 +94,6 @@ func (l *Log) Errorf(format string, args ...interface{}) {
 }
 
 func (l *Log) output(levelStr string, format string, args ...interface{}) {
-	// l.mu.Lock()
-	// defer l.mu.Unlock()
 	p := l.Prefix
 	if len(p) != 0 {
 		p = fmt.Sprintf("] %s: ", p)
