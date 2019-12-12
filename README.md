@@ -31,8 +31,8 @@ After having the package, the high level use of Terranova is like follows:
 2. Get (`go get`), import and add (`AddProvider()`) the Terraform *Provider(s)* used in the code
 3. Get (`go get`), import and add (`AddProvisioner()`) the  the Terraform *Provisioner* (if any) used in the Terraform code
 4. Add (`Var()` or `BindVars()`) the *variables* used in the Terraform code
-5. (optional) Create (`NewMiddleware()`) a logger middleware with the default logger, a custom one (`NewLog()`) or your own that implements the `Logger` interface
-6. (optional) Create your custom Terraform Hooks and assign them to the *Platform* instance
+5. (*optional*) Create (`NewMiddleware()`) a logger middleware with the default logger or a custom logger that implements the `Logger` interface
+6. (*optional*) Create your custom Terraform Hooks and assign them to the *Platform* instance
 7. Load the previous *state* of the infrastructure using `ReadStateFromFile()` or `ReadState()` methods.
 8. *Apply* the changes using the method `Apply()`
 9. Save the final *state* of the infrastructure using `WriteStateToFile()` or `WriteState()` methods.
@@ -57,8 +57,13 @@ const stateFilename = "simple.tfstate"
 func main() {
   count := 1
   keyName := "demo"
+  
+  log := log.New(os.Stderr, "", log.LstdFlags)
+  logMiddleware := logger.NewMiddleware()
+  defer logMiddleware.Close()
 
   platform, err := terranova.NewPlatform(code).
+    AddMiddleware(logMiddleware).
     AddProvider("aws", aws.Provider()).
     Var("c", count).
     Var("key_name", keyName).
@@ -121,10 +126,10 @@ These are the latest versions supported for some providers:
 
 ```go
 require (
-	github.com/hashicorp/terraform v0.12.12
-	github.com/johandry/terranova v0.0.2
-	github.com/terraform-providers/terraform-provider-openstack v1.23.0
-	github.com/terraform-providers/terraform-provider-vsphere v1.13.0
+  github.com/hashicorp/terraform v0.12.12
+  github.com/johandry/terranova v0.0.2
+  github.com/terraform-providers/terraform-provider-openstack v1.23.0
+  github.com/terraform-providers/terraform-provider-vsphere v1.13.0
 )
 ```
 
@@ -140,7 +145,7 @@ If the required provider is not in this list, you can identify the version like 
 
 1. Go to the GitHub project of the provider
 2. Locate the `provider.go` file located in the directory named like the provider name (i.e. `was/provider.go`)
-3. If the file imports `terraform-plugin-sdk/terraform` go to the previous git tag. 
+3. If the file imports `terraform-plugin-sdk/terraform` go to the previous git tag.
 4. Repeat step #3 until you find the latest tag importing `terraform/terraform` (i.e. the latest tag for AWS is `v2.31.0`)
 5. If the tag can be used in the `go.mod` file, just include it after the module name, for example: `terraform-provider-vsphere v1.13.0`
 6. If the tag cannot be used in the `go.mod` file, for example `v2.31.0` for AWS:
@@ -149,6 +154,33 @@ If the required provider is not in this list, you can identify the version like 
    3. Include the number in the `go.mod` file and execute `go mod tidy` or any other go command such as `go test` or `go build`.
 
 If this is not working and need help to identify the right version, open an issue and you'll be help as soon as possible.
+
+## Logs
+
+Using Terranova without a Log Middleware cause to print to Stderr all the Terraform logs, a lot, a lot of lines including traces. This may be uncomfortable or not needed. To discard the Terraform logs or filter them (print only the required log entries) you have to use the Log Middleware and (optionally) a custom Logger.
+
+To create a Log Middleware use:
+
+```go
+logMiddleware := logger.NewMiddleware()
+defer logMiddleware.Close()
+```
+
+As soon as the first line is execute every line printed by the standard `log` is intercepted by the Log Middleware and printed by the provided logger. This hijack will end when the Log Middleware is closed. To make the platform use the middleware, add it with `AddMiddleware()` to the platform.
+
+```go
+platform.AddMiddleware(logMiddleware)
+```
+
+A logger is an instance of the interface `Logger`. If the Log Middleware is created without parameter the default logger will be used, it prints the INFO, WARN and ERROR log entries of Terraform. To create your own logger check the examples in the [Terranova Examples](https://github.com/johandry/terranova-examples/tree/master/custom-logs) repository.
+
+**IMPORTANT**: It's recommended to create your own instance of  `log` and not use the standard log when the Log Middleware is in use. Everything that is printed using the standard log will be intercepted by the Log Middleware and processed by the Logger. So, use your own custom log or do something like this before creating the Log Middleware:
+
+```go
+log := log.New(os.Stderr, "", log.LstdFlags)
+...
+log.Printf("[DEBUG] this line is not captured by the Log Middleware")
+```
 
 ## Sources
 
