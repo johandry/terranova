@@ -73,6 +73,37 @@ func TestNewMiddleware(t *testing.T) {
 	})
 }
 
+func TestMiddleware_IsEnabled(t *testing.T) {
+	l := NewLog(ioutil.Discard, "DISCARD", LogLevelTrace)
+	lm := NewMiddleware(l)
+	defer lm.Close()
+
+	tests := []struct {
+		name   string
+		action string
+		want   bool
+	}{
+		{"is enable before start?", "", false},
+		{"is enable after start?", "start", true},
+		{"is enable after close?", "close", false},
+		{"is enable after start when was closed?", "start", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			switch tt.action {
+			case "start":
+				lm.Start()
+			case "close":
+				lm.Close()
+			}
+
+			if enabled := lm.IsEnabled(); enabled != tt.want {
+				t.Errorf("IsEnabled() = %v, want pattern %v", enabled, tt.want)
+			}
+		})
+	}
+}
+
 const (
 	Rdate       = `[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]`
 	Rtime       = `[0-9][0-9]:[0-9][0-9]:[0-9][0-9]`
