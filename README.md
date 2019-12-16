@@ -189,3 +189,7 @@ log.Printf("[DEBUG] this line is not captured by the Log Middleware")
 All this research was done reading the [Terraform documentation](https://godoc.org/github.com/hashicorp/terraform) and [source code](https://github.com/hashicorp/terraform).
 
 Please, feel free to comment, open Issues and Pull Requests, help us to improve Terranova.
+
+## Stargazers over time
+
+[![Stargazers over time](https://starchart.cc/johandry/terranova.svg)](https://starchart.cc/johandry/terranova)
