@@ -168,15 +168,17 @@ logMiddleware := logger.NewMiddleware()
 defer logMiddleware.Close()
 ```
 
-As soon as the first line is execute every line printed by the standard `log` is intercepted by the Log Middleware and printed by the provided logger. This hijack will end when the Log Middleware is closed. To make the platform use the middleware, add it with `AddMiddleware()` to the platform.
+You can decide when the Log Middleware starts intercepting the standard `log` with `logMiddleware.Start()`, if you don't them the Log Middleware will start intercepting every line printed by the standard `log` when Terranova execute an action that makes Terraform to print something to the standard `log`. 
+
+Every line intercepted by the Log Middleware is printed by the provided logger. This hijack will end when the Log Middleware is closed. To make the platform use the middleware, add it with `SetMiddleware()` to the platform.
 
 ```go
-platform.AddMiddleware(logMiddleware)
+platform.SetMiddleware(logMiddleware)
 ```
 
 A logger is an instance of the interface `Logger`. If the Log Middleware is created without parameter the default logger will be used, it prints the INFO, WARN and ERROR log entries of Terraform. To create your own logger check the examples in the [Terranova Examples](https://github.com/johandry/terranova-examples/tree/master/custom-logs) repository.
 
-**IMPORTANT**: It's recommended to create your own instance of  `log` and not use the standard log when the Log Middleware is in use. Everything that is printed using the standard log will be intercepted by the Log Middleware and processed by the Logger. So, use your own custom log or do something like this before creating the Log Middleware:
+**IMPORTANT**: It's recommended to create your own instance of `log` and not use the standard log when the Log Middleware is in use. Everything that is printed using the standard log will be intercepted by the Log Middleware and processed by the Logger. So, use your own custom log or do something like this before creating the Log Middleware:
 
 ```go
 log := log.New(os.Stderr, "", log.LstdFlags)
