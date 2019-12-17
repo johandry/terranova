@@ -60,6 +60,10 @@ func (m *Middleware) IsEnabled() bool {
 func (m *Middleware) Close() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	if m.prevWriter == nil {
+		return
+	}
 	log.SetOutput(m.prevWriter)
 	m.prevWriter = nil
 }
