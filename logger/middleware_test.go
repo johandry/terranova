@@ -14,7 +14,6 @@ import (
 
 func TestNewMiddleware(t *testing.T) {
 	tnLogger := NewLog(os.Stdout, "", DefLogLevel)
-	stdLogWriter := log.Writer()
 	discardLogger := NewLog(ioutil.Discard, "DISCARD", LogLevelTrace)
 
 	tests := []struct {
@@ -23,16 +22,13 @@ func TestNewMiddleware(t *testing.T) {
 		want *Middleware
 	}{
 		{"no logger", nil, &Middleware{
-			log:        tnLogger,
-			prevWriter: stdLogWriter,
+			log: tnLogger,
 		}},
 		{"std logger", tnLogger, &Middleware{
-			log:        tnLogger,
-			prevWriter: stdLogWriter,
+			log: tnLogger,
 		}},
 		{"discard logger", discardLogger, &Middleware{
-			log:        discardLogger,
-			prevWriter: stdLogWriter,
+			log: discardLogger,
 		}},
 	}
 	for _, tt := range tests {
@@ -50,8 +46,7 @@ func TestNewMiddleware(t *testing.T) {
 		got := NewMiddleware()
 		defer got.Close()
 		want := &Middleware{
-			log:        tnLogger,
-			prevWriter: stdLogWriter,
+			log: tnLogger,
 		}
 
 		if !reflect.DeepEqual(got, want) {
@@ -63,14 +58,122 @@ func TestNewMiddleware(t *testing.T) {
 		got := NewMiddleware(discardLogger, tnLogger, nil)
 		defer got.Close()
 		want := &Middleware{
-			log:        discardLogger,
-			prevWriter: stdLogWriter,
+			log: discardLogger,
 		}
 
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("NewMiddleware() = %+v, want %+v", got, want)
 		}
 	})
+}
+
+func TestMiddleware_IgnoreOwnLog(t *testing.T) {
+	tfBuf := new(bytes.Buffer)
+	logBuf := new(bytes.Buffer)
+
+	check := func(owner, got, pattern string) {
+		line := got
+		if len(got) > 0 {
+			line = got[0 : len(got)-1]
+		}
+
+		matched, err := regexp.MatchString(pattern, line)
+		if err != nil {
+			t.Fatal(owner+" pattern did not compile:", err)
+		}
+		if !matched {
+			t.Errorf(owner+" Print = %v, want pattern %v", line, pattern)
+		}
+	}
+	checkOutput := func(tfPattern, logPattern string) {
+		check("Middleware/Terraform", tfBuf.String(), tfPattern)
+		check("Log", logBuf.String(), logPattern)
+	}
+
+	tests := []struct {
+		name       string
+		tfPattern  string
+		logPattern string
+		f          func(lm *Middleware)
+	}{
+		{"TF captured, no log",
+			"^DEBUG \\[ " + Rdate + " " + Rtime + " \\] this line is captured by the Log Middleware$",
+			"",
+			func(lm *Middleware) {
+				lm.Start()
+
+				mockTerraformLog("debug", "this line is captured by the Log Middleware")
+			},
+		},
+		{"start, def log: no TF captured, log printed",
+			"",
+			"^" + Rdate + " " + Rtime + " \\[DEBUG\\] this line is not captured by the Log Middleware$",
+			func(lm *Middleware) {
+				lm.Start()
+				log := log.New(logBuf, "", log.LstdFlags)
+
+				log.Printf("[DEBUG] this line is not captured by the Log Middleware")
+			},
+		},
+		{"def log, start: no TF captured, log printed",
+			"",
+			"^" + Rdate + " " + Rtime + " \\[DEBUG\\] this line is not captured by the Log Middleware$",
+			func(lm *Middleware) {
+				log := log.New(logBuf, "", log.LstdFlags)
+				lm.Start()
+
+				log.Printf("[DEBUG] this line is not captured by the Log Middleware")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockLog := NewMockLog(tfBuf)
+			lm := NewMiddleware(mockLog)
+			defer lm.Close()
+			defer tfBuf.Reset()
+			defer logBuf.Reset()
+
+			tt.f(lm)
+			checkOutput(tt.tfPattern, tt.logPattern)
+		})
+	}
+}
+
+func TestMiddleware_IsEnabled(t *testing.T) {
+	l := NewLog(ioutil.Discard, "DISCARD", LogLevelTrace)
+
+	tests := []struct {
+		name   string
+		action string
+		want   bool
+	}{
+		{"is enable before start?", "", false},
+		{"is enable after close when not started?", "close", false},
+		{"is enable after start?", "start", true},
+		{"is enable after close?", "start,close", false},
+		{"is enable after start when was closed?", "start,close,start", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lm := NewMiddleware(l)
+			defer lm.Close()
+
+			for _, a := range strings.Split(tt.action, ",") {
+				switch a {
+				case "start":
+					lm.Start()
+				case "close":
+					lm.Close()
+				}
+			}
+
+			if enabled := lm.IsEnabled(); enabled != tt.want {
+				t.Errorf("IsEnabled() = %v, want pattern %v", enabled, tt.want)
+			}
+		})
+	}
 }
 
 const (
@@ -112,6 +215,8 @@ func TestMiddlewarePrint(t *testing.T) {
 			mockLog := NewMockLog(buf)
 			lm := NewMiddleware(mockLog)
 			defer lm.Close()
+
+			lm.Start()
 
 			mockTerraformLog(tt.tfLogEntryType, tt.tfLogEntry)
 			got := buf.String()

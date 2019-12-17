@@ -17,7 +17,7 @@ const TracePrefix = "[TRACE] "
 type Middleware struct {
 	log        Logger
 	prevWriter io.Writer
-	mu         sync.Mutex
+	mu         sync.Mutex // protects the previous Writer, ensure atomic set/unset/checks of prevWriter
 }
 
 // NewMiddleware creates a new instance of Middleware with the Standard
@@ -35,20 +35,37 @@ func NewMiddleware(l ...Logger) *Middleware {
 		log: lgr,
 	}
 
-	// Redirect the Terraform log output to the middleware. Then Write() will send
-	// the right output to the received/created logger
+	return m
+}
+
+// Start make the Middleware starts intercepting the log output and sending the
+// log entries to the defined logger
+func (m *Middleware) Start() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	prevWriter := log.Writer()
 	log.SetOutput(m)
 	m.prevWriter = prevWriter
+}
 
-	return m
+// IsEnabled returns true if the Middleware is intercepting the log output or not
+func (m *Middleware) IsEnabled() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.prevWriter != nil
 }
 
 // Close restore the output of the standard logger (used by Terraform) and stop
 // using the Middleware
 func (m *Middleware) Close() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.prevWriter == nil {
+		return
+	}
 	log.SetOutput(m.prevWriter)
-	m.log = nil
+	m.prevWriter = nil
 }
 
 // SetLogger sets or changes the logger of the Middleware, which is the logger

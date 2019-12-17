@@ -136,8 +136,8 @@ func (p *Platform) ReadStateFromFile(filename string) (*Platform, error) {
 	return p.ReadState(file)
 }
 
-// AddMiddleware adds the given log middleware into the Platform
-func (p *Platform) AddMiddleware(lm *logger.Middleware) *Platform {
+// SetMiddleware assigns the given log middleware into the Platform
+func (p *Platform) SetMiddleware(lm *logger.Middleware) *Platform {
 	p.LogMiddleware = lm
 	return p
 }

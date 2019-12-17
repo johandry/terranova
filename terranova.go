@@ -36,6 +36,8 @@ import (
 // Apply brings the platform to the desired state. It'll destroy the platform
 // when `destroy` is `true`.
 func (p *Platform) Apply(destroy bool) error {
+	p.startMiddleware()
+
 	countHook := new(local.CountHook)
 	stateHook := new(local.StateHook)
 
@@ -72,6 +74,8 @@ func (p *Platform) Apply(destroy bool) error {
 // Plan returns execution plan for an existing configuration to apply to the
 // platform.
 func (p *Platform) Plan(destroy bool) (*plans.Plan, error) {
+	p.startMiddleware()
+
 	ctx, err := p.newContext(destroy)
 	if err != nil {
 		return nil, err
@@ -87,6 +91,17 @@ func (p *Platform) Plan(destroy bool) (*plans.Plan, error) {
 	}
 
 	return plan, nil
+}
+
+// startMiddleware starts the Log Middleware to intercept the logs if it has not
+// been already started
+func (p *Platform) startMiddleware() {
+	if p.LogMiddleware == nil {
+		return
+	}
+	if !p.LogMiddleware.IsEnabled() {
+		p.LogMiddleware.Start()
+	}
 }
 
 // newContext creates the Terraform context or configuration
