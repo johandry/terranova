@@ -2,7 +2,7 @@
 
 # Terranova
 
-Terranova is a Go package that allows you to easily use the Terraform Go Packages instead of executing the Terraform binary. The version `v0.0.2` of Terranova works with the latest version of Terraform `v0.12.12`.
+Terranova is a Go package that allows you to easily use the Terraform Go Packages instead of executing the Terraform binary. The version `v0.0.2` of Terranova works with Terraform version `v0.12.17`.
 
 For more information about Terranova and how to use use it, refer to the blog post [Terranova: Using Terraform from Go](http://blog.johandry.com/post/terranova-terraform-from-go/).
 
@@ -166,19 +166,17 @@ To create a Log Middleware use:
 ```go
 logMiddleware := logger.NewMiddleware()
 defer logMiddleware.Close()
-```
 
-You can decide when the Log Middleware starts intercepting the standard `log` with `logMiddleware.Start()`, if you don't them the Log Middleware will start intercepting every line printed by the standard `log` when Terranova execute an action that makes Terraform to print something to the standard `log`. 
+...
 
-Every line intercepted by the Log Middleware is printed by the provided logger. This hijack will end when the Log Middleware is closed. To make the platform use the middleware, add it with `SetMiddleware()` to the platform.
-
-```go
 platform.SetMiddleware(logMiddleware)
 ```
 
+You can decide when the Log Middleware starts intercepting the standard `log` with `logMiddleware.Start()`, if you don't the Log Middleware will start intercepting every line printed by the standard `log` when Terranova execute an action that makes Terraform to print something to the standard `log`. Every line intercepted by the Log Middleware is printed by the provided logger. This hijack ends when the Log Middleware is closed. To make the platform use the middleware, add it with `SetMiddleware()` to the platform.
+
 A logger is an instance of the interface `Logger`. If the Log Middleware is created without parameter the default logger will be used, it prints the INFO, WARN and ERROR log entries of Terraform. To create your own logger check the examples in the [Terranova Examples](https://github.com/johandry/terranova-examples/tree/master/custom-logs) repository.
 
-**IMPORTANT**: It's recommended to create your own instance of `log` and not use the standard log when the Log Middleware is in use. Everything that is printed using the standard log will be intercepted by the Log Middleware and processed by the Logger. So, use your own custom log or do something like this before creating the Log Middleware:
+**IMPORTANT**: It's recommended to create your own instance of `log` to not use the standard log when the Log Middleware is in use. Everything that is printed using the standard log will be intercepted by the Log Middleware and processed by the Logger. So, use your own custom log or do something like this before creating the Log Middleware:
 
 ```go
 log := log.New(os.Stderr, "", log.LstdFlags)
@@ -192,6 +190,6 @@ All this research was done reading the [Terraform documentation](https://godoc.o
 
 Please, feel free to comment, open Issues and Pull Requests, help us to improve Terranova.
 
-## Stargazers over time
+## Stars over time
 
 [![Stargazers over time](https://starchart.cc/johandry/terranova.svg)](https://starchart.cc/johandry/terranova)
