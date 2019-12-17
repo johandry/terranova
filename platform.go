@@ -17,15 +17,9 @@ limitations under the License.
 package terranova
 
 import (
-	"bytes"
-	"io"
-	"io/ioutil"
-	"os"
-
 	"github.com/hashicorp/terraform/providers"
 	"github.com/hashicorp/terraform/provisioners"
 	"github.com/hashicorp/terraform/states"
-	"github.com/hashicorp/terraform/states/statefile"
 	"github.com/hashicorp/terraform/terraform"
 	"github.com/johandry/terranova/logger"
 	"github.com/terraform-providers/terraform-provider-null/null"
@@ -98,42 +92,6 @@ func (p *Platform) Var(name string, value interface{}) *Platform {
 	p.Vars[name] = value
 
 	return p
-}
-
-// WriteState takes a io.Writer as input to write the Terraform state
-func (p *Platform) WriteState(w io.Writer) (*Platform, error) {
-	sf := statefile.New(p.State, "", 0)
-	return p, statefile.Write(sf, w)
-}
-
-// ReadState takes a io.Reader as input to read from it the Terraform state
-func (p *Platform) ReadState(r io.Reader) (*Platform, error) {
-	sf, err := statefile.Read(r)
-	if err != nil {
-		return p, err
-	}
-	p.State = sf.State
-	return p, nil
-}
-
-// WriteStateToFile save the state of the Terraform state to a file
-func (p *Platform) WriteStateToFile(filename string) (*Platform, error) {
-	var state bytes.Buffer
-	if _, err := p.WriteState(&state); err != nil {
-		return p, err
-	}
-	return p, ioutil.WriteFile(filename, state.Bytes(), 0644)
-}
-
-// ReadStateFromFile will load the Terraform state from a file and assign it to the
-// Platform state.
-func (p *Platform) ReadStateFromFile(filename string) (*Platform, error) {
-	file, err := os.Open(filename)
-	defer file.Close()
-	if err != nil {
-		return p, err
-	}
-	return p.ReadState(file)
 }
 
 // SetMiddleware assigns the given log middleware into the Platform
