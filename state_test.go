@@ -18,6 +18,7 @@ package terranova
 
 import (
 	"bytes"
+	"io/ioutil"
 	"reflect"
 	"strings"
 	"testing"
@@ -54,6 +55,24 @@ func TestPlatform_WriteState(t *testing.T) {
 			}
 		})
 	}
+	f, err := ioutil.TempFile("", "tn")
+	if err != nil {
+		t.Fatalf("failed to create a temporal file. %s", err)
+	}
+	p := NewPlatform("")
+	p.State = testState()
+	_, err = p.WriteStateToFile(f.Name())
+	if err != nil {
+		t.Errorf("Platform.WriteStateToFile() error = %v", err)
+		return
+	}
+	got, err := ioutil.ReadFile(f.Name())
+	if err != nil {
+		t.Fatalf("failed to read the temporal file %q. %s", f.Name(), err)
+	}
+	if string(got) != testStateStr {
+		t.Errorf("Platform.WriteStateToFile() wrote %v, want %v", got, testStateStr)
+	}
 }
 
 func TestPlatform_ReadState(t *testing.T) {
@@ -81,6 +100,24 @@ func TestPlatform_ReadState(t *testing.T) {
 				t.Errorf("Platform.ReadState() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+	f, err := ioutil.TempFile("", "tn")
+	if err != nil {
+		t.Fatalf("failed to create a temporal file. %s", err)
+	}
+	err = ioutil.WriteFile(f.Name(), []byte(testStateStr), 0644)
+	if err != nil {
+		t.Fatalf("failed to write to the temporal file %q. %s", f.Name(), err)
+	}
+	p := NewPlatform("")
+	_, err = p.ReadStateFromFile(f.Name())
+	if err != nil {
+		t.Errorf("Platform.ReadStateFromFile() error = %v", err)
+		return
+	}
+	want := testState()
+	if !reflect.DeepEqual(p.State, want) {
+		t.Errorf("Platform.ReadStateFromFile() read %v, want %v", p.State, want)
 	}
 }
 
