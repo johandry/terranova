@@ -27,7 +27,7 @@ import (
 
 // Platform is the platform to be managed by Terraform
 type Platform struct {
-	Code          string
+	Code          map[string]string
 	Providers     map[string]providers.Factory
 	Provisioners  map[string]provisioners.Factory
 	Vars          map[string]interface{}
@@ -42,11 +42,15 @@ type State = states.State
 // NewPlatform return an instance of Platform with default values
 func NewPlatform(code string, hooks ...terraform.Hook) *Platform {
 	platform := &Platform{
-		Code:  code,
 		Hooks: hooks,
 	}
 	platform.addDefaultProviders()
 	platform.addDefaultProvisioners()
+
+	platform.Code = map[string]string{}
+	if len(code) != 0 {
+		platform.Code["main.tf"] = code
+	}
 
 	platform.State = states.NewState()
 
@@ -71,6 +75,16 @@ func (p *Platform) addDefaultProvisioners() {
 // AddProvisioner adds a new provisioner to the provisioner list
 func (p *Platform) AddProvisioner(name string, provisioner terraform.ResourceProvisioner) *Platform {
 	p.Provisioners[name] = provisionersFactory(provisioner)
+	return p
+}
+
+// AddFile adds Terraform code into a file. Such file could be in a directory,
+// use os.PathSeparator as path separator.
+func (p *Platform) AddFile(filename, code string) *Platform {
+	if filename == "" {
+		filename = "main.tf"
+	}
+	p.Code[filename] = code
 	return p
 }
 

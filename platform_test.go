@@ -38,7 +38,7 @@ func TestNewPlatform(t *testing.T) {
 		want *Platform
 	}{
 		{"default values", args{"fake code", []terraform.Hook{}}, &Platform{
-			Code: "fake code",
+			Code: map[string]string{"main.tf": "fake code"},
 			Providers: map[string]providers.Factory{
 				"null": providers.FactoryFixed(NewProvider(null.Provider())),
 			},

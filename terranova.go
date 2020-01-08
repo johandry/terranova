@@ -153,18 +153,9 @@ func (p *Platform) config() (*configs.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	// This defer is executed second
 	defer os.RemoveAll(cfgPath)
 
-	// Save the infrastructure code
-	cfgFileName := filepath.Join(cfgPath, "main.tf")
-	cfgFile, err := os.Create(cfgFileName)
-	if err != nil {
-		return nil, err
-	}
-	// This defer is executed first
-	defer cfgFile.Close()
-	if _, err = io.Copy(cfgFile, strings.NewReader(p.Code)); err != nil {
+	if err := p.saveCode(cfgPath); err != nil {
 		return nil, err
 	}
 
@@ -181,6 +172,32 @@ func (p *Platform) config() (*configs.Config, error) {
 	}
 
 	return config, nil
+}
+
+func (p *Platform) saveCode(cfgPath string) error {
+	if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+		return fmt.Errorf("not found the directory to save the code. %s", err)
+	}
+
+	for filename, content := range p.Code {
+		cfgFileName := filepath.Join(cfgPath, filename)
+
+		cfgFileDir := filepath.Dir(cfgFileName)
+		if _, err := os.Stat(cfgFileDir); os.IsNotExist(err) {
+			os.MkdirAll(cfgFileDir, 0700)
+		}
+
+		cfgFile, err := os.Create(cfgFileName)
+		if err != nil {
+			return err
+		}
+		defer cfgFile.Close()
+
+		if _, err = io.Copy(cfgFile, strings.NewReader(content)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (p *Platform) variables(v map[string]*configs.Variable) (terraform.InputValues, error) {
