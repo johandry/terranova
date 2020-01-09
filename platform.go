@@ -17,6 +17,8 @@ limitations under the License.
 package terranova
 
 import (
+	"sync"
+
 	"github.com/hashicorp/terraform/providers"
 	"github.com/hashicorp/terraform/provisioners"
 	"github.com/hashicorp/terraform/states"
@@ -34,6 +36,7 @@ type Platform struct {
 	State         *State
 	Hooks         []terraform.Hook
 	LogMiddleware *logger.Middleware
+	mu            sync.Mutex
 }
 
 // State is an alias for terraform.State
