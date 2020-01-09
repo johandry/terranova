@@ -147,42 +147,74 @@ func getSavedFiles(cfgPath string) (map[string]string, error) {
 }
 
 func TestPlatform_Apply(t *testing.T) {
-	type fields struct {
-		Code      string
-		CodeFiles map[string]string
-		Vars      map[string]interface{}
-		Providers map[string]terraform.ResourceProvider
-		State     *State
-		Hooks     []terraform.Hook
-	}
-
 	tests := []struct {
-		name    string
-		fields  fields
-		destroy bool
-		wantErr bool
+		name           string
+		platformFields fields
+		destroy        bool
+		wantErr        bool
 	}{
-		{"null data source", fields{Code: nullDataSource}, false, false},
+		{"null data source", testsPlatformsFields["null data source"], false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := NewPlatform(tt.fields.Code, tt.fields.Hooks...).BindVars(tt.fields.Vars)
-			if tt.fields.State != nil {
-				p.State = tt.fields.State
-			}
-			for filename, code := range tt.fields.CodeFiles {
-				p.AddFile(filename, code)
-			}
-
-			for pName, provider := range tt.fields.Providers {
-				p.AddProvider(pName, provider)
-			}
+			p := newPlatformForTest(tt.platformFields)
 
 			if err := p.Apply(tt.destroy); (err != nil) != tt.wantErr {
 				t.Errorf("Platform.Apply() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
+}
+
+func TestPlatform_Plan(t *testing.T) {
+	tests := []struct {
+		name           string
+		platformFields fields
+		destroy        bool
+		wantErr        bool
+	}{
+		{"null data source", testsPlatformsFields["null data source"], false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := newPlatformForTest(tt.platformFields)
+
+			_, err := p.Plan(tt.destroy)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Platform.Plan() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+		})
+	}
+}
+
+func newPlatformForTest(tt fields) *Platform {
+	p := NewPlatform(tt.Code, tt.Hooks...).BindVars(tt.Vars)
+	if tt.State != nil {
+		p.State = tt.State
+	}
+	for filename, code := range tt.CodeFiles {
+		p.AddFile(filename, code)
+	}
+
+	for pName, provider := range tt.Providers {
+		p.AddProvider(pName, provider)
+	}
+
+	return p
+}
+
+type fields struct {
+	Code      string
+	CodeFiles map[string]string
+	Vars      map[string]interface{}
+	Providers map[string]terraform.ResourceProvider
+	State     *State
+	Hooks     []terraform.Hook
+}
+
+var testsPlatformsFields = map[string]fields{
+	"null data source": fields{Code: nullDataSource},
 }
 
 const nullDataSource = `data "null_data_source" "values" {
