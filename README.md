@@ -182,6 +182,14 @@ All this research was done reading the [Terraform documentation](https://godoc.o
 
 Please, feel free to comment, open Issues and Pull Requests, help us to improve Terranova.
 
+## Contribute and Support
+
+A great way to contribute to the project is to send a detailed report when you encounter an issue/bug or when you are requesting a new feature. We always appreciate a well-written, thorough bug report, and will thank you for it!
+
+The [GitHub issue](https://github.com/johandry/terranova/issues) tracker is for bug reports and feature requests. If you already forked and modified Terranova with a new feature or fix, please, open a [Pull Request at GitHub](https://github.com/johandry/terranova/pulls)
+
+General support can be found at Gopher's Slack [#terraform](slack://channel?team=T029RQSE6&id=CS75NMT9P) channel or message me directly [@johandry](slack://channel?team=T029RQSE6&id=D5W0Q8CKW)
+
 ## Stars over time
 
 [![Stargazers over time](https://starchart.cc/johandry/terranova.svg)](https://starchart.cc/johandry/terranova)
