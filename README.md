@@ -30,14 +30,13 @@ GO111MODULE=on go mod vendor
 After having the package, the high level use of Terranova is like follows:
 
 1. Create a *Platform* instance with the Terraform *code* to apply
-2. Get (`go get`), import and add (`AddProvider()`) the Terraform *Provider(s)* used in the code
-3. Get (`go get`), import and add (`AddProvisioner()`) the  the Terraform *Provisioner* (if any) used in the Terraform code
-4. Add (`Var()` or `BindVars()`) the *variables* used in the Terraform code
-5. (*optional*) Create (`NewMiddleware()`) a logger middleware with the default logger or a custom logger that implements the `Logger` interface
-6. (*optional*) Create your custom Terraform Hooks and assign them to the *Platform* instance
-7. Load the previous *state* of the infrastructure using `ReadStateFromFile()` or `ReadState()` methods.
-8. *Apply* the changes using the method `Apply()`
-9. Save the final *state* of the infrastructure using `WriteStateToFile()` or `WriteState()` methods.
+2. Add to the `go.mod` file, import and add (`AddProvider()`) the Terraform *Provider(s)* used in the code
+3. Add to the `go.mod` file, import and add (`AddProvisioner()`) the Terraform *Provisioner* (if any) used in the Terraform code.
+4. Add (`Var()` or `BindVars()`) the *variables* used in the Terraform code.
+5. (*optional*) Create (`NewMiddleware()`) a logger middleware with the default logger or a custom logger that implements the `Logger` interface.
+6. (*optional*) Create your custom Terraform Hooks and assign them to the *Platform* instance.
+7. Load the previous *state* of the infrastructure and keep it updated using `PersistStateToFile()`.
+8. *Apply* the changes using the method `Apply()`.
 
 The following example shows how to create, scale or terminate AWS EC2 instances:
 
@@ -45,11 +44,12 @@ The following example shows how to create, scale or terminate AWS EC2 instances:
 package main
 
 import (
-  "log"
-  "os"
+	"log"
+	"os"
 
-  "github.com/johandry/terranova"
-  "github.com/terraform-providers/terraform-provider-aws/aws"
+	"github.com/johandry/terranova"
+	"github.com/johandry/terranova/logger"
+	"github.com/terraform-providers/terraform-provider-aws/aws"
 )
 
 var code string
@@ -57,41 +57,33 @@ var code string
 const stateFilename = "simple.tfstate"
 
 func main() {
-  count := 1
-  keyName := "demo"
-  
-  log := log.New(os.Stderr, "", log.LstdFlags)
-  logMiddleware := logger.NewMiddleware()
-  defer logMiddleware.Close()
+	count := 0
+	keyName := "demo"
 
-  platform, err := terranova.NewPlatform(code).
-    SetMiddleware(logMiddleware).
-    AddProvider("aws", aws.Provider()).
-    Var("c", count).
-    Var("key_name", keyName).
-    ReadStateFromFile(stateFilename)
+	log := log.New(os.Stderr, "", log.LstdFlags)
+	logMiddleware := logger.NewMiddleware()
+	defer logMiddleware.Close()
 
-  if err != nil {
-    if os.IsNotExist(err) {
-      log.Printf("[DEBUG] state file %s does not exists", stateFilename)
-    } else {
-      log.Fatalf("Fail to load the initial state of the platform from file %s. %s", stateFilename, err)
-    }
-  }
+	platform, err := terranova.NewPlatform(code).
+		SetMiddleware(logMiddleware).
+		AddProvider("aws", aws.Provider()).
+		Var("c", count).
+		Var("key_name", keyName).
+		PersistStateToFile(stateFilename)
 
-  terminate := (count == 0)
-  if err := platform.Apply(terminate); err != nil {
-    log.Fatalf("Fail to apply the changes to the platform. %s", err)
-  }
+	if err != nil {
+		log.Fatalf("Fail to create the platform using state file %s. %s", stateFilename, err)
+	}
 
-  if _, err := platform.WriteStateToFile(stateFilename); err != nil {
-    log.Fatalf("Fail to save the final state of the platform to file %s. %s", stateFilename, err)
-  }
+	terminate := (count == 0)
+	if err := platform.Apply(terminate); err != nil {
+		log.Fatalf("Fail to apply the changes to the platform. %s", err)
+	}
 }
 
 func init() {
-  code = `
-  variable "c"   { default = 2 }
+	code = `
+  variable "c"    { default = 2 }
   variable "key_name" {}
   provider "aws" {
     region        = "us-west-2"

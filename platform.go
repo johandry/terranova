@@ -17,15 +17,11 @@ limitations under the License.
 package terranova
 
 import (
-	"bytes"
-	"io"
-	"io/ioutil"
-	"os"
+	"sync"
 
 	"github.com/hashicorp/terraform/providers"
 	"github.com/hashicorp/terraform/provisioners"
 	"github.com/hashicorp/terraform/states"
-	"github.com/hashicorp/terraform/states/statefile"
 	"github.com/hashicorp/terraform/terraform"
 	"github.com/johandry/terranova/logger"
 	"github.com/terraform-providers/terraform-provider-null/null"
@@ -33,13 +29,14 @@ import (
 
 // Platform is the platform to be managed by Terraform
 type Platform struct {
-	Code          string
+	Code          map[string]string
 	Providers     map[string]providers.Factory
 	Provisioners  map[string]provisioners.Factory
 	Vars          map[string]interface{}
 	State         *State
 	Hooks         []terraform.Hook
 	LogMiddleware *logger.Middleware
+	mu            sync.Mutex
 }
 
 // State is an alias for terraform.State
@@ -48,11 +45,15 @@ type State = states.State
 // NewPlatform return an instance of Platform with default values
 func NewPlatform(code string, hooks ...terraform.Hook) *Platform {
 	platform := &Platform{
-		Code:  code,
 		Hooks: hooks,
 	}
 	platform.addDefaultProviders()
 	platform.addDefaultProvisioners()
+
+	platform.Code = map[string]string{}
+	if len(code) != 0 {
+		platform.Code["main.tf"] = code
+	}
 
 	platform.State = states.NewState()
 
@@ -80,6 +81,16 @@ func (p *Platform) AddProvisioner(name string, provisioner terraform.ResourcePro
 	return p
 }
 
+// AddFile adds Terraform code into a file. Such file could be in a directory,
+// use os.PathSeparator as path separator.
+func (p *Platform) AddFile(filename, code string) *Platform {
+	if filename == "" {
+		filename = "main.tf"
+	}
+	p.Code[filename] = code
+	return p
+}
+
 // BindVars binds the map of variables to the Platform variables, to be used
 // by Terraform
 func (p *Platform) BindVars(vars map[string]interface{}) *Platform {
@@ -98,42 +109,6 @@ func (p *Platform) Var(name string, value interface{}) *Platform {
 	p.Vars[name] = value
 
 	return p
-}
-
-// WriteState takes a io.Writer as input to write the Terraform state
-func (p *Platform) WriteState(w io.Writer) (*Platform, error) {
-	sf := statefile.New(p.State, "", 0)
-	return p, statefile.Write(sf, w)
-}
-
-// ReadState takes a io.Reader as input to read from it the Terraform state
-func (p *Platform) ReadState(r io.Reader) (*Platform, error) {
-	sf, err := statefile.Read(r)
-	if err != nil {
-		return p, err
-	}
-	p.State = sf.State
-	return p, nil
-}
-
-// WriteStateToFile save the state of the Terraform state to a file
-func (p *Platform) WriteStateToFile(filename string) (*Platform, error) {
-	var state bytes.Buffer
-	if _, err := p.WriteState(&state); err != nil {
-		return p, err
-	}
-	return p, ioutil.WriteFile(filename, state.Bytes(), 0644)
-}
-
-// ReadStateFromFile will load the Terraform state from a file and assign it to the
-// Platform state.
-func (p *Platform) ReadStateFromFile(filename string) (*Platform, error) {
-	file, err := os.Open(filename)
-	defer file.Close()
-	if err != nil {
-		return p, err
-	}
-	return p.ReadState(file)
 }
 
 // SetMiddleware assigns the given log middleware into the Platform
