@@ -61,6 +61,8 @@ func (p *Platform) Apply(destroy bool) error {
 		return diag.Err()
 	}
 
+	stateHook.StateMgr = p.stateMgr
+
 	sts, diag := ctx.Apply()
 	p.State = sts
 	// p.State = ctx.State()

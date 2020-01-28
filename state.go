@@ -24,7 +24,6 @@ import (
 
 	"github.com/hashicorp/terraform/states/statemgr"
 
-	"github.com/hashicorp/terraform/backend/local"
 	"github.com/hashicorp/terraform/states/statefile"
 )
 
@@ -88,11 +87,7 @@ func (p *Platform) PersistStateToFile(filename string) (*Platform, error) {
 	}
 
 	fsStateMgr := statemgr.NewFilesystem(filename)
-
-	stateHook := new(local.StateHook)
-	stateHook.StateMgr = fsStateMgr
-
-	p.Hooks = append(p.Hooks, stateHook)
+	p.stateMgr = fsStateMgr
 
 	return p, nil
 }

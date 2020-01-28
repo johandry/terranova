@@ -19,9 +19,11 @@ package terranova
 import (
 	"sync"
 
+	"github.com/hashicorp/terraform/addrs"
 	"github.com/hashicorp/terraform/providers"
 	"github.com/hashicorp/terraform/provisioners"
 	"github.com/hashicorp/terraform/states"
+	"github.com/hashicorp/terraform/states/statemgr"
 	"github.com/hashicorp/terraform/terraform"
 	"github.com/johandry/terranova/logger"
 	"github.com/terraform-providers/terraform-provider-null/null"
@@ -30,12 +32,13 @@ import (
 // Platform is the platform to be managed by Terraform
 type Platform struct {
 	Code          map[string]string
-	Providers     map[string]providers.Factory
+	Providers     map[addrs.Provider]providers.Factory
 	Provisioners  map[string]provisioners.Factory
 	Vars          map[string]interface{}
 	State         *State
 	Hooks         []terraform.Hook
 	LogMiddleware *logger.Middleware
+	stateMgr      statemgr.Writer
 	mu            sync.Mutex
 }
 
@@ -61,13 +64,13 @@ func NewPlatform(code string, hooks ...terraform.Hook) *Platform {
 }
 
 func (p *Platform) addDefaultProviders() {
-	p.Providers = map[string]providers.Factory{}
+	p.Providers = map[addrs.Provider]providers.Factory{}
 	p.AddProvider("null", null.Provider())
 }
 
 // AddProvider adds a new provider to the providers list
 func (p *Platform) AddProvider(name string, provider terraform.ResourceProvider) *Platform {
-	p.Providers[name] = providersFactory(provider)
+	p.Providers[addrs.NewLegacyProvider(name)] = providersFactory(provider)
 	return p
 }
 
