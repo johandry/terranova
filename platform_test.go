@@ -20,6 +20,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/hashicorp/terraform/addrs"
 	"github.com/hashicorp/terraform/providers"
 	"github.com/hashicorp/terraform/provisioners"
 	"github.com/hashicorp/terraform/states"
@@ -39,8 +40,8 @@ func TestNewPlatform(t *testing.T) {
 	}{
 		{"default values", args{"fake code", []terraform.Hook{}}, &Platform{
 			Code: map[string]string{"main.tf": "fake code"},
-			Providers: map[string]providers.Factory{
-				"null": providers.FactoryFixed(NewProvider(null.Provider())),
+			Providers: map[addrs.Provider]providers.Factory{
+				addrs.NewLegacyProvider("null"): providers.FactoryFixed(NewProvider(null.Provider())),
 			},
 			Provisioners:  map[string]provisioners.Factory{},
 			Vars:          nil,

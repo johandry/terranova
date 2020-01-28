@@ -204,7 +204,7 @@ func testState() *State {
 const (
 	emptyStateStr = `{
   "version": 4,
-  "terraform_version": "0.12.17",
+  "terraform_version": "0.12.20",
   "serial": 0,
   "lineage": "",
   "outputs": {},
@@ -213,7 +213,7 @@ const (
 `
 	testStateStr = `{
   "version": 4,
-  "terraform_version": "0.12.17",
+  "terraform_version": "0.12.20",
   "serial": 0,
   "lineage": "",
   "outputs": {},
