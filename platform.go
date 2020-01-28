@@ -22,6 +22,7 @@ import (
 	"github.com/hashicorp/terraform/providers"
 	"github.com/hashicorp/terraform/provisioners"
 	"github.com/hashicorp/terraform/states"
+	"github.com/hashicorp/terraform/states/statemgr"
 	"github.com/hashicorp/terraform/terraform"
 	"github.com/johandry/terranova/logger"
 	"github.com/terraform-providers/terraform-provider-null/null"
@@ -36,6 +37,7 @@ type Platform struct {
 	State         *State
 	Hooks         []terraform.Hook
 	LogMiddleware *logger.Middleware
+	stateMgr      statemgr.Writer
 	mu            sync.Mutex
 }
 
