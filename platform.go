@@ -20,6 +20,7 @@ import (
 	"sync"
 
 	"github.com/hashicorp/terraform/addrs"
+	"github.com/hashicorp/terraform/backend/local"
 	"github.com/hashicorp/terraform/providers"
 	"github.com/hashicorp/terraform/provisioners"
 	"github.com/hashicorp/terraform/states"
@@ -39,6 +40,8 @@ type Platform struct {
 	Hooks         []terraform.Hook
 	LogMiddleware *logger.Middleware
 	stateMgr      statemgr.Writer
+	countHook     *local.CountHook
+	ExpectedStats *Stats
 	mu            sync.Mutex
 }
 

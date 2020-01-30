@@ -38,13 +38,13 @@ import (
 func (p *Platform) Apply(destroy bool) error {
 	p.startMiddleware()
 
-	countHook := new(local.CountHook)
+	p.countHook = new(local.CountHook)
 	stateHook := new(local.StateHook)
 
 	if p.Hooks == nil {
 		p.Hooks = []terraform.Hook{}
 	}
-	p.Hooks = append(p.Hooks, countHook, stateHook)
+	p.Hooks = append(p.Hooks, p.countHook, stateHook)
 
 	ctx, err := p.newContext(destroy)
 	if err != nil {
@@ -57,9 +57,11 @@ func (p *Platform) Apply(destroy bool) error {
 		return diag.Err()
 	}
 
-	if _, diag := ctx.Plan(); diag.HasErrors() {
+	plan, diag := ctx.Plan()
+	if diag.HasErrors() {
 		return diag.Err()
 	}
+	p.ExpectedStats = NewStats().FromPlan(plan)
 
 	stateHook.StateMgr = p.stateMgr
 
