@@ -19,16 +19,26 @@ func NewStats() *Stats {
 	return &Stats{}
 }
 
+// Reset resets, set everything to zeros, the current stats
+func (s *Stats) Reset() {
+	s.Add, s.Change, s.Destroy = 0, 0, 0
+}
+
 // FromPlan return stats from a given plan
 func (s *Stats) FromPlan(plan *plans.Plan) *Stats {
+	s.Reset()
+	s.fromPlan = true
+
 	if plan == nil || plan.Changes == nil || plan.Changes.Empty() {
 		return s
 	}
 
-	s.Add, s.Change, s.Destroy = 0, 0, 0
-	s.fromPlan = true
-
 	for _, r := range plan.Changes.Resources {
+		// Do not count data resources
+		if r.Addr.Resource.Resource.Mode == addrs.DataResourceMode {
+			continue
+		}
+
 		switch r.Action {
 		case plans.Create:
 			s.Add++
@@ -38,9 +48,7 @@ func (s *Stats) FromPlan(plan *plans.Plan) *Stats {
 			s.Add++
 			s.Destroy++
 		case plans.Delete:
-			if r.Addr.Resource.Resource.Mode != addrs.DataResourceMode {
-				s.Destroy++
-			}
+			s.Destroy++
 		}
 	}
 
@@ -54,6 +62,7 @@ func (s *Stats) FromCountHook(countHook *local.CountHook) *Stats {
 	}
 
 	s.Add, s.Change, s.Destroy = countHook.Added, countHook.Changed, countHook.Removed
+	s.fromPlan = false
 
 	return s
 }
