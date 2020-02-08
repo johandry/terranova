@@ -25,7 +25,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform/addrs"
+	"github.com/hashicorp/terraform/configs/configschema"
+	"github.com/hashicorp/terraform/providers"
 	"github.com/hashicorp/terraform/terraform"
+	"github.com/zclconf/go-cty/cty"
 )
 
 func TestPlatform_AddFile_saveCode(t *testing.T) {
@@ -149,7 +153,7 @@ func getSavedFiles(cfgPath string) (map[string]string, error) {
 func TestPlatform_Apply(t *testing.T) {
 	tests := []struct {
 		name           string
-		platformFields fields
+		platformFields platformFields
 		destroy        bool
 		wantErr        bool
 	}{
@@ -169,7 +173,7 @@ func TestPlatform_Apply(t *testing.T) {
 func TestPlatform_Plan(t *testing.T) {
 	tests := []struct {
 		name           string
-		platformFields fields
+		platformFields platformFields
 		destroy        bool
 		wantErr        bool
 	}{
@@ -188,7 +192,7 @@ func TestPlatform_Plan(t *testing.T) {
 	}
 }
 
-func newPlatformForTest(tt fields) *Platform {
+func newPlatformForTest(tt platformFields) *Platform {
 	p := NewPlatform(tt.Code, tt.Hooks...).BindVars(tt.Vars)
 	if tt.State != nil {
 		p.State = tt.State
@@ -198,23 +202,84 @@ func newPlatformForTest(tt fields) *Platform {
 	}
 
 	for pName, provider := range tt.Providers {
-		p.AddProvider(pName, provider)
+		p.Providers[addrs.NewLegacyProvider(pName)] = provider
 	}
 
 	return p
 }
 
-type fields struct {
+// NewMockProvider creates a MockProvider from the given schema.
+func NewMockProvider(t *testing.T, name string, schema *terraform.ProviderSchema) *terraform.MockProvider {
+	p := new(terraform.MockProvider)
+
+	if schema == nil {
+		schema = &terraform.ProviderSchema{} // default schema is empty
+	}
+	p.GetSchemaReturn = schema
+
+	p.ApplyResourceChangeFn = func(req providers.ApplyResourceChangeRequest) providers.ApplyResourceChangeResponse {
+		return providers.ApplyResourceChangeResponse{
+			NewState: cty.UnknownAsNull(req.PlannedState),
+		}
+	}
+	p.PlanResourceChangeFn = func(req providers.PlanResourceChangeRequest) providers.PlanResourceChangeResponse {
+		// return providers.PlanResourceChangeResponse{
+		// 	PlannedState: req.ProposedNewState,
+		// }
+		rSchema, _ := schema.SchemaForResourceType(addrs.ManagedResourceMode, req.TypeName)
+		if rSchema == nil {
+			rSchema = &configschema.Block{} // default schema is empty
+		}
+		plannedVals := map[string]cty.Value{}
+		for name, attrS := range rSchema.Attributes {
+			val := req.ProposedNewState.GetAttr(name)
+			if attrS.Computed && val.IsNull() {
+				val = cty.UnknownVal(attrS.Type)
+			}
+			plannedVals[name] = val
+		}
+		for name := range rSchema.BlockTypes {
+			plannedVals[name] = req.ProposedNewState.GetAttr(name)
+		}
+
+		return providers.PlanResourceChangeResponse{
+			PlannedState:   cty.ObjectVal(plannedVals),
+			PlannedPrivate: req.PriorPrivate,
+		}
+	}
+	p.ReadResourceFn = func(req providers.ReadResourceRequest) providers.ReadResourceResponse {
+		return providers.ReadResourceResponse{NewState: req.PriorState}
+	}
+	p.ReadDataSourceFn = func(req providers.ReadDataSourceRequest) providers.ReadDataSourceResponse {
+		return providers.ReadDataSourceResponse{State: req.Config}
+	}
+
+	return p
+}
+
+type platformFields struct {
 	Code      string
 	CodeFiles map[string]string
 	Vars      map[string]interface{}
-	Providers map[string]terraform.ResourceProvider
+	Providers map[string]providers.Factory
 	State     *State
 	Hooks     []terraform.Hook
 }
 
-var testsPlatformsFields = map[string]fields{
-	"null data source": fields{Code: nullDataSource},
+var testsPlatformsFields = map[string]platformFields{
+	"null data source": platformFields{Code: nullDataSource},
+	"test instance": platformFields{
+		Code: testSimpleInstance,
+		Providers: map[string]providers.Factory{
+			"test": providers.FactoryFixed(NewMockProvider(nil, "test", testSimpleSchema())),
+		},
+	},
+	"test instance with data source": platformFields{
+		Code: testInstanceWithDataSource,
+		Providers: map[string]providers.Factory{
+			"test": providers.FactoryFixed(NewMockProvider(nil, "test", testSchemaWithDataSource())),
+		},
+	},
 }
 
 const nullDataSource = `data "null_data_source" "values" {
@@ -232,3 +297,88 @@ output "all_server_ips" {
   value = "${data.null_data_source.values.outputs["all_server_ips"]}"
 }
 `
+
+const testSimpleInstance = `
+resource "test_instance" "foo" {
+	ami = "bar"
+}`
+
+const testInstanceWithDataSource = `
+resource "test_instance" "foo" {
+	ami = "bar"
+
+	network_interface {
+		device_index = 0
+		description = "Main network interface"
+	}
+}
+data "test_ds" "bar" {
+  filter = "foo"
+}
+`
+
+func testSimpleSchema() *terraform.ProviderSchema {
+	return &terraform.ProviderSchema{
+		ResourceTypes: map[string]*configschema.Block{
+			"test_instance": {
+				Attributes: map[string]*configschema.Attribute{
+					"id":  {Type: cty.String, Optional: true, Computed: true},
+					"ami": {Type: cty.String, Optional: true},
+				},
+			},
+		},
+	}
+}
+
+func testSchemaWithDataSource() *terraform.ProviderSchema {
+	return &terraform.ProviderSchema{
+		Provider: &configschema.Block{
+			Attributes: map[string]*configschema.Attribute{
+				"region": {Type: cty.String, Required: true},
+			},
+		},
+		ResourceTypes: map[string]*configschema.Block{
+			"test_instance": {
+				Attributes: map[string]*configschema.Attribute{
+					"id":  {Type: cty.String, Optional: true, Computed: true},
+					"ami": {Type: cty.String, Optional: true},
+				},
+				BlockTypes: map[string]*configschema.NestedBlock{
+					"network_interface": {
+						Nesting: configschema.NestingList,
+						Block: configschema.Block{
+							Attributes: map[string]*configschema.Attribute{
+								"device_index": {Type: cty.String, Optional: true},
+								"description":  {Type: cty.String, Optional: true},
+							},
+						},
+					},
+				},
+			},
+		},
+		DataSources: map[string]*configschema.Block{
+			"test_data_source": {
+				Attributes: map[string]*configschema.Attribute{
+					"id":  {Type: cty.String, Optional: true, Computed: true},
+					"ami": {Type: cty.String, Optional: true},
+				},
+				BlockTypes: map[string]*configschema.NestedBlock{
+					"network_interface": {
+						Nesting: configschema.NestingList,
+						Block: configschema.Block{
+							Attributes: map[string]*configschema.Attribute{
+								"device_index": {Type: cty.String, Optional: true},
+								"description":  {Type: cty.String, Optional: true},
+							},
+						},
+					},
+				},
+			},
+		},
+
+		ResourceTypeSchemaVersions: map[string]uint64{
+			"test_instance":    42,
+			"test_data_source": 3,
+		},
+	}
+}
