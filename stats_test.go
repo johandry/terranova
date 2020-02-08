@@ -50,14 +50,14 @@ func TestStats_FromPlan(t *testing.T) {
 				t.Errorf("Stats.String() = %v, want %v", gotStr, tt.wantStr)
 			}
 
-			// if err := p.Apply(tt.destroy); err != nil {
-			// 	t.Errorf("Failed to apply the platform")
-			// 	return
-			// }
+			if err := p.Apply(tt.destroy); err != nil {
+				t.Errorf("Failed to apply the platform")
+				return
+			}
 
-			// if got := p.ExpectedStats; !reflect.DeepEqual(got, tt.want) {
-			// 	t.Errorf("Platform.ExpectedStats = %+v, want %+v", got, tt.want)
-			// }
+			if got := p.ExpectedStats; !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Platform.ExpectedStats = %+v, want %+v", got, tt.want)
+			}
 
 		})
 	}
@@ -67,15 +67,21 @@ func TestPlatform_Stats(t *testing.T) {
 	tests := []struct {
 		name           string
 		platformFields platformFields
+		destroy        bool
 		want           *Stats
 		wantStr        string
 	}{
-		{"null data source", testsPlatformsFields["null data source"], &Stats{0, 0, 0, false}, "resources: 0 added, 0 changed, 0 destroyed"},
-		// {"test instance", testsPlatformsFields["test instance"], &Stats{1, 0, 0, false}, "resources: 1 added, 0 changed, 0 destroyed"},
+		{"null data source", testsPlatformsFields["null data source"], false, &Stats{0, 0, 0, false}, "resources: 0 added, 0 changed, 0 destroyed"},
+		{"test instance", testsPlatformsFields["test instance"], false, &Stats{1, 0, 0, false}, "resources: 1 added, 0 changed, 0 destroyed"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := newPlatformForTest(tt.platformFields).Stats()
+			p := newPlatformForTest(tt.platformFields)
+			if err := p.Apply(tt.destroy); err != nil {
+				t.Errorf("Failed to apply the changes. Error: %s", err)
+				return
+			}
+			got := p.Stats()
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Platform.Stats() = %v, want %v", got, tt.want)
 			}
