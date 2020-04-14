@@ -32,7 +32,7 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
-func TestPlatform_AddFile_saveCode(t *testing.T) {
+func TestPlatform_AddFile_Export(t *testing.T) {
 	tmpDir, err := ioutil.TempDir("", ".terranova_test")
 	if err != nil {
 		t.Errorf("Failed to create temporal directory. %s", err)
@@ -47,8 +47,9 @@ func TestPlatform_AddFile_saveCode(t *testing.T) {
 		want      map[string]string
 		wantErr   bool
 	}{
-		{"no code", "", map[string]string{}, tmpDir, map[string]string{}, false},
-		{"bad dir", "", map[string]string{}, "/fake", map[string]string{}, true},
+		{"no code", "", map[string]string{}, tmpDir, map[string]string{}, true},
+		{"bad dir", "some fake code", map[string]string{}, "/fake", map[string]string{"main.tf": "some fake code"}, true},
+		{"bad dir and no code", "", map[string]string{}, "/fake", map[string]string{}, true},
 		{"initial main code", "some fake code", map[string]string{}, tmpDir, map[string]string{"main.tf": "some fake code"}, false},
 		{"added main code only", "", map[string]string{"": "some fake code"}, tmpDir, map[string]string{"main.tf": "some fake code"}, false},
 		{"initial and added main code", "fake code you won't see", map[string]string{"": "some fake code"}, tmpDir, map[string]string{"main.tf": "some fake code"}, false},
@@ -82,19 +83,19 @@ func TestPlatform_AddFile_saveCode(t *testing.T) {
 				t.Errorf("Platform.AddFile() error, Platform.Code = %v, want %v", p.Code, tt.want)
 			}
 
-			err := p.saveCode(thisTestDir)
+			err := p.Export(thisTestDir)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("Platform.saveCode() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("Platform.Export() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if err != nil {
 				return
 			}
 			got, err := getSavedFiles(thisTestDir)
 			if err != nil {
-				t.Errorf("Platform.saveCode() failed getting the saved files. %s", err)
+				t.Errorf("Platform.Export() failed getting the saved files. %s", err)
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Platform.saveCode() error = %v, want %v", got, tt.want)
+				t.Errorf("Platform.Export() error = %v, want %v", got, tt.want)
 			}
 		})
 	}

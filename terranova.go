@@ -17,6 +17,7 @@ limitations under the License.
 package terranova
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -157,7 +158,7 @@ func (p *Platform) config() (*configs.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(cfgPath)
+	// defer os.RemoveAll(cfgPath)
 
 	if err := p.saveCode(cfgPath); err != nil {
 		return nil, err
@@ -176,6 +177,46 @@ func (p *Platform) config() (*configs.Config, error) {
 	}
 
 	return config, nil
+}
+
+// Export save all the code to the given directory. The directory must exists
+// and there should be code to export.
+func (p *Platform) Export(dir string) error {
+	if len(p.Code) == 0 {
+		return fmt.Errorf("no code to export")
+	}
+
+	if err := p.saveCode(dir); err != nil {
+		return err
+	}
+
+	if len(p.Vars) == 0 {
+		return nil
+	}
+
+	tfvarsFile, err := os.Create(filepath.Join(dir, "terraform.tfvars"))
+	if err != nil {
+		return err
+	}
+	defer tfvarsFile.Close()
+
+	var totalErr string
+	w := bufio.NewWriter(tfvarsFile)
+	for name, value := range p.Vars {
+		_, err := w.WriteString(fmt.Sprintf("%s = \"%s\"\n", name, value))
+		if err != nil {
+			totalErr = fmt.Sprintf("%s\n\t%s", totalErr, err)
+		}
+	}
+	if err := w.Flush(); err != nil {
+		totalErr = fmt.Sprintf("%s\n\t%s", totalErr, err)
+	}
+
+	if len(totalErr) != 0 {
+		return fmt.Errorf("Failed to create the terraform.tfvars file. Errors:%s", totalErr)
+	}
+
+	return nil
 }
 
 func (p *Platform) saveCode(cfgPath string) error {
