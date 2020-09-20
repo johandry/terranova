@@ -2,6 +2,8 @@
 
 # Terranova
 
+![terranova](/Users/johandry/Workspace/johandry/terranova/images/terranova-160x160.png)
+
 Terranova is a Go package that allows you to easily use the Terraform Go Packages instead of executing the Terraform binary. The version `v0.0.2` of Terranova works with Terraform version `v0.12.17`.
 
 For more information about Terranova and how to use use it, refer to the blog post [Terranova: Using Terraform from Go](http://blog.johandry.com/post/terranova-terraform-from-go/).
